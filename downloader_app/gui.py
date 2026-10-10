@@ -70,6 +70,15 @@ class DownloadManagerApp:
             file=str(Path(__file__).parent / "assets" / "icons" / "main_ico.png")
         )
         self.root.iconphoto(True, self._app_icon)
+        aero_icons = Path(__file__).parent / "assets" / "aero"
+        self.dialog_icons = {
+            kind: tk.PhotoImage(file=str(aero_icons / filename)).subsample(3, 3)
+            for kind, filename in {
+                "info": "media-playback-start.png",
+                "warning": "media-playback-pause.png",
+                "error": "media-playback-stop.png",
+            }.items()
+        }
         self._configure_style()
         self.storage = Storage()
         self.storage.recover_interrupted_downloads()
@@ -295,6 +304,58 @@ class DownloadManagerApp:
         self._register_localized(
             lambda: self.tabs.tab(tab, text=self._t(key))
         )
+
+    def _show_message(self, title: str, message: str, kind: str) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        dialog.iconphoto(True, self._app_icon)
+
+        content = ttk.Frame(dialog, padding=16)
+        content.pack(fill="both", expand=True)
+        ttk.Label(content, image=self.dialog_icons[kind]).pack(
+            side="left", padx=(0, 14)
+        )
+        ttk.Label(
+            content,
+            text=message,
+            justify="left",
+            wraplength=440,
+        ).pack(side="left", fill="x", expand=True)
+
+        buttons = ttk.Frame(content)
+        buttons.pack(side="bottom", fill="x", pady=(16, 0))
+        close_button = ttk.Button(
+            buttons,
+            text="OK",
+            command=dialog.destroy,
+            style="Accent.TButton",
+        )
+        close_button.pack(side="right")
+        dialog.bind("<Return>", lambda _event: close_button.invoke())
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+
+        self.root.update_idletasks()
+        dialog.update_idletasks()
+        width = dialog.winfo_reqwidth()
+        height = dialog.winfo_reqheight()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - height) // 2
+        dialog.geometry(f"+{max(0, x)}+{max(0, y)}")
+        dialog.grab_set()
+        close_button.focus_set()
+        dialog.wait_window()
+
+    def _show_info(self, title: str, message: str) -> None:
+        self._show_message(title, message, "info")
+
+    def _show_warning(self, title: str, message: str) -> None:
+        self._show_message(title, message, "warning")
+
+    def _show_error(self, title: str, message: str) -> None:
+        self._show_message(title, message, "error")
 
     def _set_language(self, locale: str) -> None:
         if locale not in self.locales:
@@ -712,7 +773,7 @@ class DownloadManagerApp:
         try:
             os.startfile(str(Path(__file__).parent / "locales"))
         except OSError as exc:
-            messagebox.showerror(self._t("messages.folder_error"), str(exc))
+            self._show_error(self._t("messages.folder_error"), str(exc))
 
     def _copy_contribution_template(self) -> None:
         try:
@@ -720,7 +781,7 @@ class DownloadManagerApp:
             self.root.clipboard_append(self._t("contribute.report_template"))
             self.root.update_idletasks()
         except tk.TclError as exc:
-            messagebox.showerror(self._t("messages.clipboard_error"), str(exc))
+            self._show_error(self._t("messages.clipboard_error"), str(exc))
             return
         self.status_var.set(self._t("contribute.template_copied"))
 
@@ -1191,7 +1252,7 @@ class DownloadManagerApp:
     def _add_links(self) -> None:
         urls = parse_urls(self.link_text.get("1.0", "end"))
         if not urls:
-            messagebox.showwarning(
+            self._show_warning(
                 self._t("messages.no_links_title"),
                 self._t("messages.no_links_text"),
             )
@@ -1204,7 +1265,7 @@ class DownloadManagerApp:
     def _scan_media_pages(self) -> None:
         page_urls = parse_urls(self.link_text.get("1.0", "end"))
         if not page_urls:
-            messagebox.showwarning(
+            self._show_warning(
                 self._t("scan.no_page_urls_title"),
                 self._t("scan.no_urls"),
             )
@@ -1296,7 +1357,7 @@ class DownloadManagerApp:
                 f"{urlsplit(item.page_url).hostname or item.page_url}: {item.error}"
                 for item in errors
             )
-            messagebox.showwarning(self._t("scan.errors_title"), details)
+            self._show_warning(self._t("scan.errors_title"), details)
         elif candidates:
             self.media_scan_status.set(
                 self._t("scan.result", count=len(candidates))
@@ -1479,13 +1540,13 @@ class DownloadManagerApp:
         if not urls:
             return
         if len(urls) > 1:
-            messagebox.showinfo(
+            self._show_info(
                 self._t("messages.open_media_title"),
                 self._t("messages.one_media_link"),
             )
             return
         if not webbrowser.open(urls[0]):
-            messagebox.showerror(
+            self._show_error(
                 self._t("messages.browser_error"),
                 self._t("messages.browser_media_error"),
             )
@@ -1498,7 +1559,7 @@ class DownloadManagerApp:
             self.root.clipboard_clear()
             self.root.clipboard_append("\n".join(urls))
         except tk.TclError as exc:
-            messagebox.showerror(self._t("messages.clipboard_error"), str(exc))
+            self._show_error(self._t("messages.clipboard_error"), str(exc))
 
     def _queue_selected_media(self) -> None:
         candidates = [
@@ -1507,7 +1568,7 @@ class DownloadManagerApp:
             if item in self.selected_media_ids
         ]
         if not candidates:
-            messagebox.showinfo(
+            self._show_info(
                 "No media selected",
                 self._t("messages.no_media_selected"),
             )
@@ -1519,7 +1580,7 @@ class DownloadManagerApp:
     def _add_quick_link(self, _event: object = None) -> None:
         urls = parse_urls(self.quick_link_var.get())
         if not urls:
-            messagebox.showwarning(
+            self._show_warning(
                 self._t("messages.invalid_link"),
                 self._t("messages.invalid_url"),
             )
@@ -1732,7 +1793,7 @@ class DownloadManagerApp:
             Path(folder).mkdir(parents=True, exist_ok=True)
             os.startfile(folder)
         except OSError as exc:
-            messagebox.showerror(self._t("messages.folder_error"), str(exc))
+            self._show_error(self._t("messages.folder_error"), str(exc))
 
     def _rename_selected(self) -> None:
         selected = self._selected_ids()
@@ -1750,7 +1811,7 @@ class DownloadManagerApp:
         try:
             self._rename_download(record.id, new_name)
         except (OSError, ValueError) as exc:
-            messagebox.showerror(self._t("messages.rename_failed"), str(exc))
+            self._show_error(self._t("messages.rename_failed"), str(exc))
 
     def _rename_download(self, download_id: int, new_name: str) -> None:
         record = self.records[download_id]
@@ -1827,14 +1888,13 @@ class DownloadManagerApp:
             try:
                 self.storage.delete_download(download_id)
             except sqlite3.Error as exc:
-                messagebox.showerror(
+                self._show_error(
                     self._t("messages.remove_failed"),
                     self._t(
                         "messages.remove_error",
                         filename=record.filename,
                         error=exc,
                     ),
-                    parent=self.root,
                 )
                 continue
             self.manager.remove(download_id)
@@ -1859,10 +1919,9 @@ class DownloadManagerApp:
             record.status != "completed" or not path.is_file()
             for record, path in zip(records, paths)
         ):
-            messagebox.showerror(
+            self._show_error(
                 self._t("messages.delete_title"),
                 self._t("messages.delete_only_completed"),
-                parent=self.root,
             )
             return
         if not messagebox.askyesno(
@@ -1875,8 +1934,8 @@ class DownloadManagerApp:
             for path in paths:
                 path.unlink()
         except OSError as exc:
-            messagebox.showerror(
-                self._t("messages.delete_failed"), str(exc), parent=self.root
+            self._show_error(
+                self._t("messages.delete_failed"), str(exc)
             )
             return
         self._remove_downloads(selected)
@@ -1934,14 +1993,14 @@ class DownloadManagerApp:
         try:
             clipboard_text = self.root.clipboard_get()
         except tk.TclError:
-            messagebox.showwarning(
+            self._show_warning(
                 self._t("messages.clipboard_empty_title"),
                 self._t("messages.clipboard_empty_text"),
             )
             return
         urls = parse_urls(clipboard_text)
         if not urls:
-            messagebox.showwarning(
+            self._show_warning(
                 self._t("messages.no_clipboard_links_title"),
                 self._t("messages.no_clipboard_links_text"),
             )
@@ -2008,7 +2067,7 @@ class DownloadManagerApp:
             if download_id in self.records
         ]
         if not urls:
-            messagebox.showinfo(
+            self._show_info(
                 self._t("messages.copy_urls_title"),
                 self._t("messages.select_download"),
             )
@@ -2018,7 +2077,7 @@ class DownloadManagerApp:
             self.root.clipboard_append("\n".join(urls))
             self.root.update_idletasks()
         except tk.TclError as exc:
-            messagebox.showerror(self._t("messages.clipboard_error"), str(exc))
+            self._show_error(self._t("messages.clipboard_error"), str(exc))
 
     def _open_selected_links(self) -> None:
         urls = [
@@ -2027,14 +2086,14 @@ class DownloadManagerApp:
             if download_id in self.records
         ]
         if not urls:
-            messagebox.showinfo(
+            self._show_info(
                 self._t("messages.open_urls_title"),
                 self._t("messages.select_download"),
             )
             return
         failed = [url for url in urls if not webbrowser.open(url)]
         if failed:
-            messagebox.showerror(
+            self._show_error(
                 self._t("messages.browser_error"),
                 self._t("messages.browser_urls_error")
                 + "\n"
@@ -2159,7 +2218,7 @@ class DownloadManagerApp:
             Path(self.download_directory).mkdir(parents=True, exist_ok=True)
             os.startfile(self.download_directory)
         except OSError as exc:
-            messagebox.showerror(self._t("messages.folder_error"), str(exc))
+            self._show_error(self._t("messages.folder_error"), str(exc))
 
     def _open_data_directory(self) -> None:
         try:
@@ -2167,10 +2226,10 @@ class DownloadManagerApp:
             data_directory.mkdir(parents=True, exist_ok=True)
             os.startfile(str(data_directory))
         except OSError as exc:
-            messagebox.showerror(self._t("messages.data_folder_error"), str(exc))
+            self._show_error(self._t("messages.data_folder_error"), str(exc))
 
     def _about(self) -> None:
-        messagebox.showinfo(
+        self._show_info(
             self._t("about.title"),
             self._t("about.body"),
         )

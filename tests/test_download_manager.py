@@ -485,6 +485,26 @@ class DownloadTests(unittest.TestCase):
                     (1254, 1254),
                 )
                 self.assertEqual(
+                    set(app.dialog_icons),
+                    {"info", "warning", "error"},
+                )
+                self.assertEqual(
+                    {
+                        (icon.width(), icon.height())
+                        for icon in app.dialog_icons.values()
+                    },
+                    {(43, 43)},
+                )
+                root.after(
+                    0,
+                    lambda: [
+                        child.destroy()
+                        for child in root.winfo_children()
+                        if isinstance(child, tk.Toplevel)
+                    ],
+                )
+                app._show_info("Info", "Popup test")
+                self.assertEqual(
                     set(app.toolbar_icons),
                     {
                         "add",
