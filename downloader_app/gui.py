@@ -328,7 +328,7 @@ class DownloadManagerApp:
         ttk.Separator(dialog, orient="horizontal").pack(
             side="bottom", fill="x", padx=16, pady=(14, 0)
         )
-        buttons = ttk.Frame(dialog, padding=(16, 10, 16, 12))
+        buttons = ttk.Frame(dialog, padding=(16, 6, 16, 8))
         buttons.pack(side="bottom", fill="x")
         close_button = ttk.Button(
             buttons,
