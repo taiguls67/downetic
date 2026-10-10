@@ -1,80 +1,66 @@
 # Downetic
 
-A small Windows download manager built with Python 3.12+, Tkinter, SQLite,
-Requests, and yt-dlp.
+<p><img src="downloader_app/assets/icons/main_ico.png" alt="Downetic app icon" width="150"></p>
 
-The app has Downloads, Link Grabber, Help, and History views, plus a toolbar
-for common actions. Choose the interface language from Settings > Language.
-History is available from the Help menu.
+**A straightforward download manager for Windows.**
 
-Toolbar icons use the diinki Aero icon pack, with its included MIT license and
-source attribution in `downloader_app\assets\aero`.
+Downetic brings regular downloads and media links together in one desktop app.
+Paste links, scan pages for media, and keep an eye on active and finished
+downloads from a single place.
 
-## Features
+> **Beta:** Downetic is still being tested and improved. Some sites or media
+> formats may not work as expected. If you run into a problem, please report it
+> from the Help tab.
 
-- Choose one of 20 interface languages from Settings > Language. The selection
-  is saved between runs; locale JSON resources are in `downloader_app\locales`.
-- The Help tab has ways to report problems, share ideas, and work on
-  translations. Empty Downloads, Link Grabber, and History views show a small
-  monochrome illustration and a short hint.
-- Paste multiple links in Link Grabber; duplicate HTTP/HTTPS links are removed.
-- Scan a web page for embedded audio/video/stream sources and direct media-file
-  links, then filter by type or host, search by name/host, and select results to
-  queue. Selected links can also be opened or copied directly from the results.
-  Scanning reports page progress and continues when an individual page fails.
-  Scanning reads the page's HTML; media added dynamically by page scripts may
-  not be detected.
-- Queue, pause, resume, cancel, and retry transfers.
-- HTTP downloads resume from `.part` files when the server supports byte ranges.
-- HTTP requests use a browser-compatible User-Agent for hosts that reject the
-  default Python Requests identity.
-- yt-dlp handles compatible video/audio websites. `Auto` uses HTTP for common
-  direct-file extensions and yt-dlp for other links; select HTTP or Video to
-  override this choice.
-- HLS `.m3u8` and DASH `.mpd` manifests are downloaded as media by yt-dlp, even
-  if HTTP is selected, rather than saving the manifest text as a file.
-- YouTube downloads use an installed JavaScript runtime (Node.js, Deno, or Bun)
-  to solve player challenges. Node.js LTS is recommended; the app detects it
-  automatically from `PATH`.
-- Choose Original, MP3, MP4, or WebM for yt-dlp downloads in Link Grabber.
-  The selection is saved with each queued download.
-- Configure the target directory and up to eight simultaneous downloads.
-- File, Settings, Tools, and Help menus provide clipboard import,
-  selected-link actions, history access, and quick access to format and concurrency.
-- SQLite saves settings and download history between runs.
-- Download work runs off the Tkinter UI thread.
+## Download
 
-## Install and run
+Get the ready-to-use Windows build from
+[Downetic Releases](https://github.com/taiguls67/downetic/releases/latest).
+Download the latest release and follow any instructions included with it.
 
-1. Install 64-bit Python 3.12 or newer from [python.org](https://www.python.org/downloads/windows/).
-   Enable the Python launcher and Tcl/Tk components in the installer.
-2. Open PowerShell in this project directory.
-3. Create and activate a virtual environment, then install dependencies:
+## What it can do
+
+- Add one or more HTTP or HTTPS links, including links copied to the clipboard.
+- Scan a page for direct video, audio, and streaming links. Filter results by
+  file type or host, search them, then queue, open, or copy selected links.
+- Download files over HTTP, resuming partial downloads when the server supports
+  it, or use yt-dlp for supported video and audio sites.
+- Pause, resume, cancel, retry, and manage several downloads at once.
+- Choose a download folder and save download history and preferences locally.
+- Use the interface in any of 20 languages.
+
+Page scanning reads the page's HTML. Media added later by page scripts may not
+be found. Site support depends on the site and the media format.
+
+## YouTube and other video sites
+
+Video downloads use yt-dlp. YouTube may also need a JavaScript runtime:
+[Node.js](https://nodejs.org/) LTS is recommended; Deno and Bun are also
+supported when available on `PATH`.
+
+## Run from source
+
+1. Install 64-bit Python 3.12 or newer from
+   [python.org](https://www.python.org/downloads/windows/). Make sure Tcl/Tk is
+   included.
+2. Open PowerShell in the project folder and install the dependencies:
 
    ```powershell
    py -3.12 -m venv .venv
    .\.venv\Scripts\Activate.ps1
    python -m pip install --upgrade pip
-   python -m pip install --upgrade -r requirements.txt
+   python -m pip install -r requirements.txt
    ```
 
-4. Launch the application:
+3. Start Downetic:
 
    ```powershell
    python main.py
    ```
 
-Install [Node.js LTS](https://nodejs.org/) and restart the application if
-YouTube downloads report that no JavaScript runtime is available.
+## Build a Windows executable
 
-Downloaded files go to the chosen directory. The SQLite database and settings
-are stored under `%LOCALAPPDATA%\Downetic`. Existing installations continue
-using `%LOCALAPPDATA%\ClassicDownloadManager` when that legacy data folder is
-present and no Downetic folder exists.
-
-## Build a standalone Windows executable
-
-From the activated environment, run:
+With the virtual environment activated, run:
 
 ```powershell
 python -m PyInstaller --noconfirm --clean --windowed --name Downetic `
@@ -84,19 +70,31 @@ python -m PyInstaller --noconfirm --clean --windowed --name Downetic `
   --collect-all yt_dlp --collect-all yt_dlp_ejs main.py
 ```
 
-The executable is created at `dist\Downetic\Downetic.exe`.
-For a single-file executable, add `--onefile` to the command. The first launch
-can take longer while the one-file bundle extracts.
-Node.js, Deno, or Bun must still be installed separately for YouTube downloads.
-The Windows executable uses the multi-size icon converted from `main_ico.png`;
-the app uses the PNG for its window icon when run from source.
+The app is created in `dist\Downetic\Downetic.exe`. Add `--onefile` if you
+prefer a single executable; its first launch may take longer. YouTube downloads
+still require a separately installed JavaScript runtime.
+
+## Files and privacy
+
+Downloads are saved in the folder you choose. Settings and download history
+are stored locally under `%LOCALAPPDATA%\Downetic`. Downetic continues to use
+the old `%LOCALAPPDATA%\ClassicDownloadManager` data folder if it exists and
+the Downetic data folder has not yet been created.
 
 ## Tests
 
-Run the focused local HTTP downloader tests (they use an ephemeral local server):
+Run the test suite from the project folder:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-No external download service is used by the tests.
+The HTTP download tests use a local temporary server; they do not contact an
+external download service.
+
+## Credits
+
+Toolbar icons are from
+[diinki Aero Icons](https://github.com/Aneko-san/diinki-aero-icons-1.5-remix).
+The included MIT license and source attribution are in
+`downloader_app\assets\aero`.
