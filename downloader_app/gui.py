@@ -330,7 +330,8 @@ class DownloadManagerApp:
             buttons,
             text="OK",
             command=dialog.destroy,
-            style="Accent.TButton",
+            style="TButton",
+            width=10,
         )
         close_button.pack(side="right")
         dialog.bind("<Return>", lambda _event: close_button.invoke())
