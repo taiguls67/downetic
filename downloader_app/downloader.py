@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import time
 from email.message import Message
 from pathlib import Path
@@ -75,10 +76,44 @@ def _response_filename(response: requests.Response, url: str) -> str:
 
 
 def _javascript_runtime_options() -> dict[str, object]:
+    runtime_directory = _runtime_directory()
+    bundled_node = runtime_directory / "node" / "node.exe"
+    node_candidates = [bundled_node]
+    node_candidates.extend(
+        sorted(
+            (runtime_directory / "node").glob("node-v*-win-x64/node.exe"),
+            reverse=True,
+        )
+    )
+    for candidate in node_candidates:
+        if candidate.is_file():
+            return {"js_runtimes": {"node": {"path": str(candidate)}}}
+
     for runtime in ("node", "deno", "bun"):
         runtime_path = shutil.which(runtime)
         if runtime_path:
             return {"js_runtimes": {runtime: {"path": runtime_path}}}
+    return {}
+
+
+def _runtime_directory() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "runtime"
+    return Path(__file__).resolve().parents[1] / "runtime"
+
+
+def _ffmpeg_options() -> dict[str, object]:
+    ffmpeg_directory = _runtime_directory() / "ffmpeg"
+    candidates = [ffmpeg_directory / "bin" / "ffmpeg.exe"]
+    candidates.extend(
+        sorted(
+            ffmpeg_directory.glob("ffmpeg-*/bin/ffmpeg.exe"),
+            reverse=True,
+        )
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return {"ffmpeg_location": str(candidate.parent)}
     return {}
 
 
@@ -321,6 +356,7 @@ def download_video(
         "overwrites": False,
         **_video_output_options(output_format),
         **runtime_options,
+        **_ffmpeg_options(),
     }
     with yt_dlp.YoutubeDL(options) as ydl:
         code = ydl.download([url])

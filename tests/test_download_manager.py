@@ -17,6 +17,7 @@ from requests.exceptions import ConnectionError
 
 from downloader_app.downloader import (
     TransferCancelled,
+    _ffmpeg_options,
     _javascript_runtime_options,
     _video_output_options,
     _is_youtube_collection_url,
@@ -255,6 +256,44 @@ class DownloadTests(unittest.TestCase):
                 _javascript_runtime_options(),
                 {"js_runtimes": {"node": {"path": r"C:\Program Files\nodejs\node.exe"}}},
             )
+
+    def test_video_runtime_options_use_installer_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime_directory = Path(directory) / "runtime"
+            node_path = (
+                runtime_directory
+                / "node"
+                / "node-v24.21.0-win-x64"
+                / "node.exe"
+            )
+            ffmpeg_path = (
+                runtime_directory
+                / "ffmpeg"
+                / "ffmpeg-N-127271-gba987fe24d-win64-lgpl-shared"
+                / "bin"
+                / "ffmpeg.exe"
+            )
+            node_path.parent.mkdir(parents=True)
+            ffmpeg_path.parent.mkdir(parents=True)
+            node_path.touch()
+            ffmpeg_path.touch()
+
+            with (
+                patch(
+                    "downloader_app.downloader._runtime_directory",
+                    return_value=runtime_directory,
+                ),
+                patch("downloader_app.downloader.shutil.which") as which,
+            ):
+                self.assertEqual(
+                    _javascript_runtime_options(),
+                    {"js_runtimes": {"node": {"path": str(node_path)}}},
+                )
+                self.assertEqual(
+                    _ffmpeg_options(),
+                    {"ffmpeg_location": str(ffmpeg_path.parent)},
+                )
+                which.assert_not_called()
 
     def test_youtube_without_javascript_runtime_has_actionable_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

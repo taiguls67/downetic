@@ -63,16 +63,36 @@ supported when available on `PATH`.
 With the virtual environment activated, run:
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --windowed --name Downetic `
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name Downetic `
   --icon "downloader_app\assets\icons\main_ico.ico" `
   --add-data "downloader_app\assets;downloader_app\assets" `
   --add-data "downloader_app\locales;downloader_app\locales" `
   --collect-all yt_dlp --collect-all yt_dlp_ejs main.py
 ```
 
-The app is created in `dist\Downetic\Downetic.exe`. Add `--onefile` if you
-prefer a single executable; its first launch may take longer. YouTube downloads
-still require a separately installed JavaScript runtime.
+The app is created at `dist\Downetic.exe`. Its first launch may take longer.
+
+## Build the Windows installer
+
+The installer places Downetic, FFmpeg, and Node.js in the selected app folder.
+It downloads the Node.js LTS archive from nodejs.org and an LGPL shared FFmpeg
+build from BtbN/FFmpeg-Builds during setup, so an Internet connection is
+required. The archives are SHA-256 verified. The installed runtimes are local
+to Downetic and do not change the system `PATH`. The portable executable and
+source builds use runtimes already installed on the computer.
+
+Build the executable first, install Inno Setup 6, then run the compiler from
+the project folder:
+
+```powershell
+Set-Location .\installer
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" .\Downetic.iss
+```
+
+The installer is written to `dist\installer`. The installer supports Windows
+10 version 22H2 and newer. The installed FFmpeg package contains its license;
+Node.js includes its license and third-party notices. YouTube downloads still
+depend on the supported site and may change over time.
 
 ## Files and privacy
 
