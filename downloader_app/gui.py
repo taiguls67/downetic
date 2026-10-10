@@ -176,6 +176,7 @@ class DownloadManagerApp:
             foreground=COLORS["text"],
             bordercolor=COLORS["header_dark"],
         )
+        style.configure("Dialog.TButton", padding=(3, 1))
         style.map(
             "TButton",
             background=[("pressed", COLORS["header_dark"]), ("active", COLORS["white"])],
@@ -330,8 +331,7 @@ class DownloadManagerApp:
             buttons,
             text="OK",
             command=dialog.destroy,
-            style="TButton",
-            width=10,
+            style="Dialog.TButton",
         )
         close_button.pack(side="right")
         dialog.bind("<Return>", lambda _event: close_button.invoke())
