@@ -313,7 +313,7 @@ class DownloadManagerApp:
         dialog.resizable(False, False)
         dialog.iconphoto(True, self._app_icon)
 
-        content = ttk.Frame(dialog, padding=16)
+        content = ttk.Frame(dialog, padding=(16, 16, 16, 0))
         content.pack(fill="both", expand=True)
         ttk.Label(content, image=self.dialog_icons[kind]).pack(
             side="left", padx=(0, 14)
@@ -325,8 +325,11 @@ class DownloadManagerApp:
             wraplength=440,
         ).pack(side="left", fill="x", expand=True)
 
-        buttons = ttk.Frame(content)
-        buttons.pack(side="bottom", fill="x", pady=(16, 0))
+        ttk.Separator(dialog, orient="horizontal").pack(
+            side="bottom", fill="x", padx=16, pady=(14, 0)
+        )
+        buttons = ttk.Frame(dialog, padding=(16, 10, 16, 12))
+        buttons.pack(side="bottom", fill="x")
         close_button = ttk.Button(
             buttons,
             text="OK",
