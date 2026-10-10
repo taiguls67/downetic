@@ -1,6 +1,6 @@
 # Downetic
 
-<p><img src="downloader_app/assets/icons/main_ico.png" alt="Downetic app icon" width="150"></p>
+<p><img src="downloader_app/assets/icons/text_ico.png" alt="Downetic app icon" width="150"></p>
 
 **A straightforward download manager for Windows.**
 
@@ -77,9 +77,7 @@ still require a separately installed JavaScript runtime.
 ## Files and privacy
 
 Downloads are saved in the folder you choose. Settings and download history
-are stored locally under `%LOCALAPPDATA%\Downetic`. Downetic continues to use
-the old `%LOCALAPPDATA%\ClassicDownloadManager` data folder if it exists and
-the Downetic data folder has not yet been created.
+are stored locally under `%LOCALAPPDATA%\Downetic`.
 
 ## Tests
 

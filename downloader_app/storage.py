@@ -11,11 +11,7 @@ from downloader_app.models import DownloadRecord
 
 def default_data_directory() -> Path:
     base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    downetic_directory = base / "Downetic"
-    legacy_directory = base / "ClassicDownloadManager"
-    if legacy_directory.exists() and not downetic_directory.exists():
-        return legacy_directory
-    return downetic_directory
+    return base / "Downetic"
 
 
 def filename_from_url(url: str) -> str:

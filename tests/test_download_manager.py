@@ -452,7 +452,7 @@ class DownloadTests(unittest.TestCase):
             finally:
                 storage.close()
 
-    def test_data_directory_uses_downetic_and_preserves_legacy_folder(self) -> None:
+    def test_data_directory_always_uses_downetic_folder(self) -> None:
         import os
 
         from downloader_app.storage import default_data_directory
@@ -462,8 +462,6 @@ class DownloadTests(unittest.TestCase):
                 self.assertEqual(default_data_directory(), Path(directory) / "Downetic")
                 legacy_directory = Path(directory) / "ClassicDownloadManager"
                 legacy_directory.mkdir()
-                self.assertEqual(default_data_directory(), legacy_directory)
-                (Path(directory) / "Downetic").mkdir()
                 self.assertEqual(default_data_directory(), Path(directory) / "Downetic")
 
     def test_download_and_history_views_keep_completed_records(self) -> None:
