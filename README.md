@@ -15,7 +15,7 @@ downloads from a single place.
 ## Download
 
 Get the ready-to-use Windows build from
-[Downetic Releases](https://github.com/taiguls67/downetic/releases/latest).
+[Downetic Releases](https://github.com/taiguls67/downetic/releases).
 Download the latest release and follow any instructions included with it.
 
 ## What it can do
