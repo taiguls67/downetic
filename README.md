@@ -1,6 +1,6 @@
 # Downetic
 
-<p><img src="downloader_app/assets/icons/text_ico.png" alt="Downetic app icon" width="150"></p>
+<p><img src="downloader_app/assets/icons/text_ico.png" alt="Downetic app logo" width="600"></p>
 
 **A straightforward download manager for Windows.**
 
