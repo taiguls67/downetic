@@ -118,6 +118,7 @@ class DownloadManager:
     def _dispatch(self) -> None:
         while True:
             with self._condition:
+                # wait here instead of spinning while every slot is busy.
                 while not self._closed and (
                     self._active >= self._simultaneous
                     or not any(t.status == "queued" for t in self._transfers.values())

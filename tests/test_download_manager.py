@@ -47,6 +47,7 @@ class FileHandler(BaseHTTPRequestHandler):
         range_header = self.headers.get("Range")
         if range_header:
             self.requested_ranges.append(range_header)
+        # mimic a server that honors byte-range resumes.
         offset = int(range_header.removeprefix("bytes=").removesuffix("-")) if range_header else 0
         self.send_response(206 if offset else 200)
         self.send_header("Content-Type", "application/octet-stream")

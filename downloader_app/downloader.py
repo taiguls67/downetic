@@ -194,6 +194,7 @@ def download_http(
         target = resume_target if resume_at else _unique_target(output_dir, filename)
         partial = target.with_name(target.name + ".part")
 
+        # append only when the server confirms the exact byte offset.
         if resume_at and response.status_code == 206:
             content_range = response.headers.get("Content-Range", "")
             if not content_range.startswith(f"bytes {resume_at}-"):

@@ -1305,6 +1305,7 @@ class DownloadManagerApp:
             except tk.TclError:
                 pass
 
+        # network requests stay off tkinter's ui thread, so the window keeps moving.
         threading.Thread(target=scan, name="media-link-scan", daemon=True).start()
 
     def _update_media_scan_progress(

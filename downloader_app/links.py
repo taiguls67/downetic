@@ -12,6 +12,7 @@ def parse_urls(text: str) -> list[str]:
     results: list[str] = []
     seen: set[str] = set()
     for match in URL_PATTERN.findall(text):
+        # trim punctuation grabbed from the sentence, not the link.
         url = match.rstrip(".,;:!?)]}")
         parsed = urlsplit(url)
         if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:

@@ -241,6 +241,7 @@ def scan_media_pages(
                         body = bytearray()
                         for chunk in response.iter_content(chunk_size=64 * 1024):
                             body.extend(chunk)
+                            # don't slurp giant pages; we only need their markup.
                             if len(body) >= MAX_PAGE_BYTES:
                                 del body[MAX_PAGE_BYTES:]
                                 break

@@ -48,6 +48,7 @@ class Storage:
                 row["name"]
                 for row in self._connection.execute("PRAGMA table_info(downloads)")
             }
+            # older dbs miss this column; patch them up in place.
             if "output_format" not in columns:
                 self._connection.execute(
                     "ALTER TABLE downloads ADD COLUMN output_format "

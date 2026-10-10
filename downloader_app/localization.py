@@ -34,6 +34,7 @@ def load_locale(locale: str) -> dict[str, str]:
         english_path = LOCALE_DIRECTORY / "en.json"
         with english_path.open(encoding="utf-8") as source:
             english = json.load(source)
+        # keep every translation in lockstep with english.
         missing = english.keys() - data.keys()
         extra = data.keys() - english.keys()
         if missing or extra:
