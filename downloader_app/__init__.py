@@ -1,0 +1,1 @@
+"""Classic desktop download manager."""

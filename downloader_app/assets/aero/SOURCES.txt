@@ -1,0 +1,7 @@
+Icon assets in this directory are from:
+diinki-aero-icons-1.5-remix
+https://github.com/Aneko-san/diinki-aero-icons-1.5-remix
+
+The upstream project identifies diinkikot as the icon-pack author and notes
+that icons belong to their respective owners. The upstream MIT license is
+included as LICENSE.txt.
