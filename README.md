@@ -102,6 +102,13 @@ The installer is written to `dist\installer`. The installer supports Windows
 Node.js includes its license and third-party notices. YouTube downloads still
 depend on the supported site and may change over time.
 
+Before building or publishing a release, verify its version and installer
+languages and licenses with the JavaScript release checker:
+
+```powershell
+node .\tests\js\verify-release.mjs
+```
+
 ## Files and privacy
 
 Downloads are saved in the folder you choose. Settings and download history
