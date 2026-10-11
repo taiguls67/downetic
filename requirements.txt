@@ -1,3 +1,6 @@
+# http downloads and page scans
 requests>=2.31.0
+# media-site extraction, with the standard optional deps
 yt-dlp[default]>=2026.8.19
+# bundles the app into a standalone windows executable
 pyinstaller>=6.0.0
