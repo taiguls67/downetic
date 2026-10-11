@@ -116,6 +116,7 @@ Before building or publishing a release, verify its version and installer
 languages and licenses with the JavaScript release checker:
 
 ```powershell
+node .\tests\js\sync-release-version.mjs
 node .\tests\js\verify-release.mjs
 ```
 
