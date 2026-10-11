@@ -33,6 +33,16 @@ Download the latest release and follow any instructions included with it.
 Page scanning reads the page's HTML. Media added later by page scripts may not
 be found. Site support depends on the site and the media format.
 
+## Screenshots
+
+**Link grabber**
+
+<p><img src="https://i.imgur.com/bbnqwbj.png" alt="Downetic link grabber" width="900"></p>
+
+**Completed download**
+
+<p><img src="https://i.imgur.com/RqwDTta.png" alt="Downetic showing a completed download" width="900"></p>
+
 ## YouTube and other video sites
 
 Video downloads use yt-dlp. YouTube may also need a JavaScript runtime:
