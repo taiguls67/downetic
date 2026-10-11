@@ -141,3 +141,5 @@ Toolbar icons are from
 [diinki Aero Icons](https://github.com/Aneko-san/diinki-aero-icons-1.5-remix).
 The included MIT license and source attribution are in
 `downloader_app\assets\aero`.
+
+Thanks to everyone who tests and contributes to Downetic.
