@@ -3,6 +3,8 @@ from __future__ import annotations
 import tempfile
 import threading
 import queue
+import base64
+import subprocess
 import sqlite3
 import sys
 import time
@@ -10,11 +12,12 @@ import types
 import unittest
 import json
 import re
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from requests.exceptions import ConnectionError
 
+from downloader_app import __version__
 from downloader_app.downloader import (
     TransferCancelled,
     _ffmpeg_options,
@@ -25,6 +28,7 @@ from downloader_app.downloader import (
     download_video,
     select_engine,
 )
+from downloader_app.gui import DownloadManagerApp, _show_windows_notification
 from downloader_app.links import parse_urls
 from downloader_app.manager import DownloadManager
 from downloader_app.media_links import MediaLink, extract_media_links, scan_media_pages
@@ -119,12 +123,65 @@ class DownloadTests(unittest.TestCase):
             with self.subTest(locale=locale):
                 self.assertEqual(set(load_locale(locale)), expected_keys)
 
+    def test_package_version_matches_windows_installer_display_name(self) -> None:
+        installer = (
+            Path(__file__).parents[1] / "installer" / "Downetic.iss"
+        ).read_text(encoding="utf-8")
+        self.assertIn(f'#define AppVersion "{__version__}"', installer)
+        self.assertIn("AppVerName=Downetic v{#AppVersion}", installer)
+        self.assertIn(
+            "UninstallDisplayName=Downetic v{#AppVersion}",
+            installer,
+        )
+
     def test_parse_urls_filters_and_deduplicates(self) -> None:
         links = parse_urls(
             f"See {self.url} and {self.url}. Ignore ftp://example.com/file "
             "and malformed https://"
         )
         self.assertEqual(links, [self.url])
+
+    def test_windows_download_notification_uses_encoded_script(self) -> None:
+        with (
+            patch("downloader_app.gui.sys.platform", "win32"),
+            patch("downloader_app.gui.subprocess.Popen") as start_process,
+        ):
+            _show_windows_notification("Downetic - Completato", "O'Brien.mp4")
+
+        command = start_process.call_args.args[0]
+        encoded_script = command[command.index("-EncodedCommand") + 1]
+        script = base64.b64decode(encoded_script).decode("utf-16le")
+        self.assertIn("$notification.ShowBalloonTip(5000)", script)
+        self.assertIn("$notification.BalloonTipTitle = 'Downetic - Completato'", script)
+        self.assertIn("$notification.BalloonTipText = 'O''Brien.mp4'", script)
+        self.assertEqual(
+            start_process.call_args.kwargs["creationflags"],
+            subprocess.CREATE_NO_WINDOW,
+        )
+
+    def test_completion_event_notifies_only_when_download_becomes_completed(self) -> None:
+        app = DownloadManagerApp.__new__(DownloadManagerApp)
+        app.events = queue.Queue()
+        record = types.SimpleNamespace(id=1, status="downloading", filename="sample.mp4")
+        app.records = {record.id: record}
+        app.storage = types.SimpleNamespace(update_download=Mock())
+        app._upsert_row = Mock()
+        app._refresh_status = Mock()
+        app._show_selected_progress = Mock()
+        app.root = types.SimpleNamespace(after=Mock())
+        app._t = lambda key: {
+            "app.title": "Downetic",
+            "download.status.completed": "Completed",
+        }[key]
+
+        with patch("downloader_app.gui._show_windows_notification") as notify:
+            app.events.put({"id": record.id, "status": "completed"})
+            app._poll_events()
+            notify.assert_called_once_with("Downetic - Completed", "sample.mp4")
+
+            app.events.put({"id": record.id, "status": "completed"})
+            app._poll_events()
+            notify.assert_called_once()
 
     def test_extract_media_links_from_mixed_page(self) -> None:
         links = extract_media_links(
@@ -376,6 +433,8 @@ class DownloadTests(unittest.TestCase):
 
         fake_module = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
         with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "video.mp4").write_bytes(b"existing")
+            (Path(directory) / "video (1).mkv").write_bytes(b"existing retry")
             with patch.dict(sys.modules, {"yt_dlp": fake_module}):
                 result = download_video(
                     "https://cdn.example/video/index-v1-a1.m3u8",
@@ -383,8 +442,13 @@ class DownloadTests(unittest.TestCase):
                     TransferControl(threading.Event(), threading.Event()),
                     lambda _event: None,
                     "mp4",
+                    "video.mp4",
                 )
         self.assertEqual(result, "Video download")
+        self.assertEqual(
+            Path(str(captured["outtmpl"])).name,
+            "video (2).%(ext)s",
+        )
         self.assertEqual(captured["merge_output_format"], "mp4")
         self.assertIn("bestvideo", captured["format"])
         self.assertTrue(captured["noplaylist"])
@@ -606,7 +670,10 @@ class DownloadTests(unittest.TestCase):
                     app.download_tree.heading("status", "text"), "Stato"
                 )
                 self.assertEqual(
-                    app.context_menu.entrycget(8, "label"), "Rinomina..."
+                    app.context_menu.entrycget(9, "label"), "Rinomina..."
+                )
+                self.assertEqual(
+                    app.context_menu.entrycget(3, "label"), "Riprova"
                 )
                 self.assertEqual(
                     app.media_context_menu.entrycget(0, "label"),
@@ -813,7 +880,8 @@ class DownloadTests(unittest.TestCase):
                 popup.assert_called_once()
                 self.assertEqual(app.context_menu.entrycget(0, "state"), "disabled")
                 self.assertEqual(app.context_menu.entrycget(1, "state"), "normal")
-                self.assertEqual(app.context_menu.entrycget(8, "state"), "disabled")
+                self.assertEqual(app.context_menu.entrycget(3, "state"), "disabled")
+                self.assertEqual(app.context_menu.entrycget(9, "state"), "disabled")
 
                 record.status = "completed"
                 app.storage.update_download(record.id, status="completed")
@@ -868,8 +936,28 @@ class DownloadTests(unittest.TestCase):
                             y_root=10,
                         )
                     )
-                self.assertEqual(app.context_menu.entrycget(8, "state"), "normal")
-                self.assertEqual(app.context_menu.entrycget(10, "state"), "normal")
+                self.assertEqual(app.context_menu.entrycget(3, "state"), "normal")
+                self.assertEqual(app.context_menu.entrycget(9, "state"), "normal")
+                self.assertEqual(app.context_menu.entrycget(11, "state"), "normal")
+                with patch.object(app.manager, "add") as add_retry:
+                    app.history_tree.selection_set(str(record.id))
+                    app._retry_selected()
+                retry_record = next(
+                    retry
+                    for retry in app.records.values()
+                    if retry.id != record.id and retry.url == record.url
+                )
+                self.assertEqual(retry_record.status, "queued")
+                self.assertEqual(retry_record.filename, "renamed-video.mp4")
+                self.assertEqual(retry_record.destination, record.destination)
+                add_retry.assert_called_once_with(
+                    retry_record,
+                    video_retry_filename="renamed-video.mp4",
+                )
+                self.assertTrue(app.download_tree.exists(str(retry_record.id)))
+                app.tabs.select(app.history_tab)
+                app._context_tree = None
+                app.history_tree.selection_set(str(record.id))
                 with patch(
                     "downloader_app.gui.messagebox.askyesno",
                     return_value=True,
@@ -878,6 +966,7 @@ class DownloadTests(unittest.TestCase):
                 self.assertFalse((Path(directory) / "renamed-video.mp4").exists())
                 self.assertNotIn(record.id, app.records)
 
+                app.tabs.select(app.downloads_tab)
                 second_id = app.storage.add_download(
                     "https://example.com/second.bin", directory
                 )

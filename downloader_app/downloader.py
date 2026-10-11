@@ -283,6 +283,7 @@ def download_video(
     control: TransferControl,
     report: ProgressCallback,
     output_format: str = "original",
+    retry_filename: str = "",
 ) -> str:
     try:
         import yt_dlp
@@ -293,6 +294,16 @@ def download_video(
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = ""
     last_progress_report: float | None = None
+    output_template = str(output_dir / "%(title)s.%(ext)s")
+    if retry_filename:
+        stem = Path(retry_filename).stem
+        index = 1
+        while any(
+            path.name.casefold().startswith(f"{stem} ({index}).".casefold())
+            for path in output_dir.iterdir()
+        ):
+            index += 1
+        output_template = str(output_dir / f"{stem} ({index}).%(ext)s")
     runtime_options = _javascript_runtime_options()
     if _is_youtube_collection_url(url):
         raise RuntimeError(
@@ -345,7 +356,7 @@ def download_video(
                 filename = Path(str(final_path)).name
 
     options: dict[str, object] = {
-        "outtmpl": str(output_dir / "%(title)s.%(ext)s"),
+        "outtmpl": output_template,
         "noplaylist": True,
         "playlist_items": "1",
         "quiet": True,

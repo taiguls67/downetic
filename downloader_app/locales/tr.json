@@ -62,6 +62,7 @@
   "context.open_download_folder": "İndirme klasörünü aç",
   "context.open_url": "URL'yi aç",
   "context.copy_url": "URL'yi kopyala",
+  "context.retry": "Yeniden dene",
   "context.rename": "Yeniden adlandır...",
   "context.remove": "Listeden kaldır",
   "context.delete_downloaded_file": "İndirilen dosyayı sil...",

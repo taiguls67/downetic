@@ -62,6 +62,7 @@
   "context.open_download_folder": "Abrir carpeta de descargas",
   "context.open_url": "Abrir URL",
   "context.copy_url": "Copiar URL",
+  "context.retry": "Reintentar",
   "context.rename": "Cambiar nombre...",
   "context.remove": "Eliminar de la lista",
   "context.delete_downloaded_file": "Eliminar el archivo descargado...",

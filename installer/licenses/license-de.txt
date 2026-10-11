@@ -1,0 +1,7 @@
+Downetic - Installations- und Nutzungshinweis
+
+Downetic ist ein Download-Manager. Bitte beachten Sie vor der Installation:
+
+• Sie sind dafür verantwortlich, sicherzustellen, dass die heruntergeladenen Dateien und deren Verwendung den geltenden Gesetzen sowie den für die Inhalte geltenden Rechten und Bedingungen entsprechen.
+• Das Installationsprogramm lädt Node.js und FFmpeg herunter. Diese Komponenten von Drittanbietern werden unter ihren jeweiligen Lizenzen verteilt; die zugehörigen Lizenz- und Hinweisdateien sind in den installierten Komponenten enthalten.
+• Mit Ihrer Zustimmung bestätigen Sie, dass Sie diesen Hinweis gelesen haben und mit der Installation fortfahren möchten. Dieser Hinweis ersetzt oder ändert nicht die für Downetic-Komponenten oder heruntergeladene Inhalte geltenden Lizenzen.

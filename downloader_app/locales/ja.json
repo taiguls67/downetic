@@ -62,6 +62,7 @@
   "context.open_download_folder": "ダウンロードフォルダーを開く",
   "context.open_url": "URLを開く",
   "context.copy_url": "URLをコピー",
+  "context.retry": "再試行",
   "context.rename": "名前を変更...",
   "context.remove": "リストから削除",
   "context.delete_downloaded_file": "ダウンロードしたファイルを削除します...",

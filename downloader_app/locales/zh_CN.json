@@ -62,6 +62,7 @@
   "context.open_download_folder": "打开下载文件夹",
   "context.open_url": "打开网址",
   "context.copy_url": "复制网址",
+  "context.retry": "重试",
   "context.rename": "重命名...",
   "context.remove": "从列表中删除",
   "context.delete_downloaded_file": "删除下载的文件...",

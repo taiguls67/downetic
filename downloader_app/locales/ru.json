@@ -62,6 +62,7 @@
   "context.open_download_folder": "Открыть папку загрузок",
   "context.open_url": "Открыть URL",
   "context.copy_url": "Копировать URL",
+  "context.retry": "Повторить",
   "context.rename": "Переименовать...",
   "context.remove": "Удалить из списка",
   "context.delete_downloaded_file": "Удалить загруженный файл...",

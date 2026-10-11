@@ -1,0 +1,7 @@
+Downetic - Avis d’installation et d’utilisation
+
+Downetic est un gestionnaire de téléchargements. Avant de l’installer, veuillez noter que :
+
+• Il vous appartient de vérifier que les fichiers téléchargés et leur utilisation respectent les lois applicables ainsi que les droits et conditions relatifs aux contenus.
+• Le programme d’installation télécharge Node.js et FFmpeg. Ces composants tiers sont distribués sous leurs propres licences ; leurs fichiers de licence et mentions sont inclus avec les composants installés.
+• En acceptant cet avis, vous confirmez l’avoir lu et souhaitez poursuivre l’installation. Cet avis ne remplace ni ne modifie les licences applicables aux composants de Downetic ou aux contenus téléchargés.

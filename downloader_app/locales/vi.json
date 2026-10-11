@@ -62,6 +62,7 @@
   "context.open_download_folder": "Mở thư mục tải xuống",
   "context.open_url": "Mở URL",
   "context.copy_url": "Sao chép URL",
+  "context.retry": "Thử lại",
   "context.rename": "Đổi tên...",
   "context.remove": "Xóa khỏi danh sách",
   "context.delete_downloaded_file": "Xóa file đã tải xuống...",

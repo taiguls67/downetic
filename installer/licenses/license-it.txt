@@ -1,0 +1,7 @@
+Downetic - Avviso di installazione e utilizzo
+
+Downetic è un programma per scaricare file. Prima di installarlo, tieni presente che:
+
+• Sei responsabile di assicurarti che i file scaricati e il loro utilizzo siano conformi alle leggi applicabili e ai diritti e alle condizioni relativi ai contenuti.
+• Il programma di installazione scarica Node.js e FFmpeg. Questi componenti di terze parti sono distribuiti secondo le rispettive licenze; i relativi file di licenza e avvisi sono inclusi nei componenti installati.
+• Accettando questo avviso confermi di averlo letto e di voler proseguire con l'installazione. L'avviso non sostituisce né modifica le licenze applicabili ai componenti di Downetic o ai contenuti scaricati.

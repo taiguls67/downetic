@@ -62,6 +62,7 @@
   "context.open_download_folder": "डाउनलोड फ़ोल्डर खोलें",
   "context.open_url": "यूआरएल खोलें",
   "context.copy_url": "यूआरएल कॉपी करें",
+  "context.retry": "फिर कोशिश करें",
   "context.rename": "नाम बदलें...",
   "context.remove": "सूची से हटाएँ",
   "context.delete_downloaded_file": "डाउनलोड की गई फ़ाइल हटाएं...",

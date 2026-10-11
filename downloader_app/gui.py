@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import base64
+import logging
 import os
 import queue
 import sqlite3
+import subprocess
+import sys
 import threading
 import tkinter as tk
 import webbrowser
@@ -11,6 +15,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from urllib.parse import urlsplit
 
+from downloader_app.downloader import select_engine
 from downloader_app.links import parse_urls
 from downloader_app.localization import available_locales, load_locale
 from downloader_app.manager import DownloadManager
@@ -38,6 +43,48 @@ COLORS = {
     "orange": "#d48a22",
     "red": "#a83a35",
 }
+
+
+def _show_windows_notification(title: str, message: str) -> None:
+    if sys.platform != "win32":
+        return
+
+    def quote_powershell(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    script = "\n".join(
+        (
+            "Add-Type -AssemblyName System.Windows.Forms",
+            "$notification = New-Object System.Windows.Forms.NotifyIcon",
+            "$notification.Icon = [System.Drawing.SystemIcons]::Information",
+            "$notification.Visible = $true",
+            f"$notification.BalloonTipTitle = {quote_powershell(title)}",
+            f"$notification.BalloonTipText = {quote_powershell(message)}",
+            "$notification.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info",
+            "$notification.ShowBalloonTip(5000)",
+            "Start-Sleep -Seconds 6",
+            "$notification.Dispose()",
+        )
+    )
+    encoded_script = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    try:
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-STA",
+                "-WindowStyle",
+                "Hidden",
+                "-EncodedCommand",
+                encoded_script,
+            ],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except OSError:
+        logging.getLogger(__name__).exception(
+            "Unable to show a Windows download completion notification."
+        )
 
 
 def format_size(size: int | None, unknown: str = "Unknown") -> str:
@@ -605,6 +652,7 @@ class DownloadManagerApp:
             "menu.start_resume",
             "toolbar.pause",
             "toolbar.stop",
+            "context.retry",
             None,
             "context.open_download_folder",
             "context.open_url",
@@ -617,6 +665,7 @@ class DownloadManagerApp:
         self.context_menu.add_command(label="Start / Resume", command=self._resume_selected)
         self.context_menu.add_command(label="Pause", command=self._pause_selected)
         self.context_menu.add_command(label="Stop", command=self._cancel_selected)
+        self.context_menu.add_command(label="Retry", command=self._retry_selected)
         self.context_menu.add_separator()
         self.context_menu.add_command(
             label="Open download folder", command=self._open_selected_folder
@@ -632,6 +681,7 @@ class DownloadManagerApp:
         for index, key in enumerate(context_labels):
             if key:
                 self._localize_menu_entry(self.context_menu, index, key)
+        self._localize_menu_entry(self.context_menu, 3, "context.retry")
 
         self._build_information_panel()
         self._build_quick_add()
@@ -1702,12 +1752,20 @@ class DownloadManagerApp:
                 record = self.records.get(download_id)
                 if not record:
                     continue
+                just_completed = (
+                    event.get("status") == "completed" and record.status != "completed"
+                )
                 for key, value in event.items():
                     if key != "id" and hasattr(record, key):
                         setattr(record, key, value)
                 updates = {key: value for key, value in event.items() if key != "id"}
                 self.storage.update_download(download_id, **updates)
                 self._upsert_row(record)
+                if just_completed:
+                    _show_windows_notification(
+                        f"{self._t('app.title')} - {self._t('download.status.completed')}",
+                        record.filename,
+                    )
                 changed = True
             except (KeyError, TypeError, ValueError) as exc:
                 self.status_var.set(
@@ -1738,6 +1796,7 @@ class DownloadManagerApp:
         self._context_tree = tree
         selected = self._selected_ids()
         records = [self.records[item] for item in selected if item in self.records]
+        can_retry = any(record.status == "completed" for record in records)
         can_rename = len(records) == 1 and records[0].status in {
             "paused", "cancelled", "error", "completed",
         }
@@ -1765,12 +1824,15 @@ class DownloadManagerApp:
                 )
                 else "disabled",
             )
-        for index in (5, 6, 9):
             self.context_menu.entryconfigure(
-                index, state="normal" if records else "disabled"
+                3, state="normal" if can_retry else "disabled"
             )
-        self.context_menu.entryconfigure(8, state="normal" if can_rename else "disabled")
-        self.context_menu.entryconfigure(10, state="normal" if can_delete else "disabled")
+            for index in (6, 7, 10):
+                self.context_menu.entryconfigure(
+                    index, state="normal" if records else "disabled"
+                )
+            self.context_menu.entryconfigure(9, state="normal" if can_rename else "disabled")
+            self.context_menu.entryconfigure(11, state="normal" if can_delete else "disabled")
         try:
             self.context_menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -1946,7 +2008,46 @@ class DownloadManagerApp:
         self._remove_downloads(selected)
 
     def _retry_selected(self) -> None:
-        self._resume_selected()
+        retry_ids = []
+        for download_id in self._selected_ids():
+            record = self.records.get(download_id)
+            if record is None:
+                continue
+            if record.status != "completed":
+                self.manager.resume(download_id)
+                continue
+
+            retry_id = self.storage.add_download(
+                record.url,
+                record.destination,
+                record.engine,
+                record.output_format,
+            )
+            retry_record = next(
+                item
+                for item in self.storage.get_downloads()
+                if item.id == retry_id
+            )
+            retry_record.filename = record.filename
+            self.storage.update_download(retry_id, filename=record.filename)
+            self.records[retry_id] = retry_record
+            video_retry_filename = (
+                record.filename
+                if select_engine(record.url, record.engine) == "video"
+                else ""
+            )
+            self.manager.add(
+                retry_record,
+                video_retry_filename=video_retry_filename,
+            )
+            self._upsert_row(retry_record)
+            retry_ids.append(str(retry_id))
+
+        if retry_ids:
+            self.tabs.select(self.downloads_tab)
+            self.download_tree.selection_set(retry_ids)
+            self._refresh_status()
+            self._show_selected_progress()
 
     def _resume_all(self) -> None:
         for download_id, record in self.records.items():

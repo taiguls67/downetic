@@ -1,0 +1,7 @@
+Downetic - Aviso de instalação e uso
+
+O Downetic é um gerenciador de downloads. Antes de instalá-lo, observe:
+
+• Você é responsável por garantir que os arquivos baixados e seu uso estejam de acordo com as leis aplicáveis e com os direitos e termos relativos ao conteúdo.
+• O instalador baixa o Node.js e o FFmpeg. Esses componentes de terceiros são distribuídos sob suas próprias licenças; os arquivos de licença e avisos correspondentes estão incluídos nos componentes instalados.
+• Ao aceitar este aviso, você confirma que o leu e deseja continuar com a instalação. Este aviso não substitui nem altera as licenças aplicáveis aos componentes do Downetic ou ao conteúdo baixado.

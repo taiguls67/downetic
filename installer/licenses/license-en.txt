@@ -1,0 +1,7 @@
+Downetic - Installation and use notice
+
+Downetic is a download manager. Before installing, please note:
+
+• You are responsible for ensuring that the files you download and their use comply with applicable laws and the rights and terms that apply to the content.
+• The installer downloads Node.js and FFmpeg. These third-party components are distributed under their own licenses; their license and notice files are included with the installed components.
+• Accepting this notice confirms that you have read it and wish to continue with the installation. This notice does not replace or change the licenses that apply to Downetic's components or downloaded content.

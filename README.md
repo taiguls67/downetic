@@ -27,6 +27,7 @@ Download the latest release and follow any instructions included with it.
   it, or use yt-dlp for supported video and audio sites.
 - Pause, resume, cancel, retry, and manage several downloads at once.
 - Choose a download folder and save download history and preferences locally.
+- See a Windows notification when a download finishes.
 - Use the interface in any of 20 languages.
 
 Page scanning reads the page's HTML. Media added later by page scripts may not
@@ -74,12 +75,19 @@ The app is created at `dist\Downetic.exe`. Its first launch may take longer.
 
 ## Build the Windows installer
 
-The installer places Downetic, FFmpeg, and Node.js in the selected app folder.
+The installer interface is available in English, Italian, French, German,
+Spanish, Brazilian Portuguese, and Japanese. It asks you to accept an
+installation and use notice before continuing. It detects Node.js and FFmpeg
+on `PATH` and lets you choose separately whether to reuse each existing
+installation or download Downetic's bundled copy. The installer places
+Downetic and the selected runtimes in the chosen app folder.
 It downloads the Node.js LTS archive from nodejs.org and an LGPL shared FFmpeg
 build from BtbN/FFmpeg-Builds during setup, so an Internet connection is
 required. The archives are SHA-256 verified. The installed runtimes are local
-to Downetic and do not change the system `PATH`. The portable executable and
-source builds use runtimes already installed on the computer.
+to Downetic and do not change the system `PATH`. When you choose existing
+components, Downetic uses them from the system `PATH` without changing it. The
+portable executable and source builds use runtimes already installed on the
+computer.
 
 Build the executable first, install Inno Setup 6, then run the compiler from
 the project folder:

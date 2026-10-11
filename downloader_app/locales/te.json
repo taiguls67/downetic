@@ -62,6 +62,7 @@
   "context.open_download_folder": "డౌన్‌లోడ్ ఫోల్డర్‌ను తెరవండి",
   "context.open_url": "URLని తెరవండి",
   "context.copy_url": "URLని కాపీ చేయండి",
+  "context.retry": "మళ్లీ ప్రయత్నించండి",
   "context.rename": "పేరు మార్చండి...",
   "context.remove": "జాబితా నుండి తీసివేయండి",
   "context.delete_downloaded_file": "డౌన్‌లోడ్ చేసిన ఫైల్‌ను తొలగించండి...",

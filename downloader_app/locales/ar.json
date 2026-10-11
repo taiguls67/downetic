@@ -62,6 +62,7 @@
   "context.open_download_folder": "افتح مجلد التنزيل",
   "context.open_url": "افتح عنوان URL",
   "context.copy_url": "انسخ عنوان URL",
+  "context.retry": "إعادة المحاولة",
   "context.rename": "إعادة التسمية...",
   "context.remove": "إزالة من القائمة",
   "context.delete_downloaded_file": "حذف الملف الذي تم تنزيله...",

@@ -23,6 +23,7 @@ class Transfer:
     control: TransferControl
     status: str
     remove_requested: bool = False
+    video_retry_filename: str = ""
 
 
 class DownloadManager:
@@ -41,7 +42,7 @@ class DownloadManager:
     def _emit(self, download_id: int, **values: object) -> None:
         self.events.put({"id": download_id, **values})
 
-    def add(self, record: DownloadRecord) -> None:
+    def add(self, record: DownloadRecord, video_retry_filename: str = "") -> None:
         with self._condition:
             control = TransferControl(threading.Event(), threading.Event())
             status = (
@@ -53,7 +54,12 @@ class DownloadManager:
                 control.paused.set()
             elif status == "cancelled":
                 control.cancelled.set()
-            self._transfers[record.id] = Transfer(record, control, status)
+            self._transfers[record.id] = Transfer(
+                record,
+                control,
+                status,
+                video_retry_filename=video_retry_filename,
+            )
             self._emit(
                 record.id,
                 status=status,
@@ -150,6 +156,7 @@ class DownloadManager:
                     transfer.control,
                     report,
                     record.output_format,
+                    transfer.video_retry_filename,
                 )
             else:
                 filename = download_http(

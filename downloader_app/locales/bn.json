@@ -62,6 +62,7 @@
   "context.open_download_folder": "ডাউনলোড ফোল্ডার খুলুন",
   "context.open_url": "URL খুলুন",
   "context.copy_url": "URL কপি করুন",
+  "context.retry": "আবার চেষ্টা করুন",
   "context.rename": "পুনঃনামকরণ...",
   "context.remove": "তালিকা থেকে সরান",
   "context.delete_downloaded_file": "ডাউনলোড করা ফাইল মুছুন...",
