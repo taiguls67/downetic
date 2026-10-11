@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// hop out of tests/js so this works from any cwd, no path roulette.
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const localesDirectory = path.join(projectRoot, "downloader_app", "locales");
 const installerDirectory = path.join(projectRoot, "installer");
@@ -28,6 +29,7 @@ async function main() {
   const english = JSON.parse(await readFile(path.join(localesDirectory, "en.json"), "utf8"));
   const expectedKeys = Object.keys(english).sort();
 
+  // keep every translation in lockstep with english.
   for (const filename of localeFiles) {
     const locale = JSON.parse(await readFile(path.join(localesDirectory, filename), "utf8"));
     const actualKeys = Object.keys(locale).sort();
@@ -47,6 +49,7 @@ async function main() {
   if (languageSectionStart < 0) {
     throw new Error("Installer language section is missing.");
   }
+  // only scan this block; the rest of the .iss file isn't language config.
   const nextSectionStart = installerSource.indexOf("\n[", languageSectionStart + 1);
   const languageSection = installerSource.slice(
     languageSectionStart,
@@ -60,6 +63,7 @@ async function main() {
   for (const [, language, licensePath] of languages) {
     const licenseFile = path.resolve(installerDirectory, licensePath);
     const relativeLicense = path.relative(installerDirectory, licenseFile);
+    // don't let a sneaky path escape the installer folder.
     if (relativeLicense.startsWith("..") || path.isAbsolute(relativeLicense)) {
       throw new Error(`Installer license path escapes the installer directory: ${licensePath}.`);
     }
