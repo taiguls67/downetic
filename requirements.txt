@@ -2,5 +2,7 @@
 requests>=2.31.0
 # media-site extraction, with the standard optional deps
 yt-dlp[default]>=2026.8.19
-# bundles the app into a standalone windows executable
+# bittorrent & magnet downloads
+libtorrent>=2.0.11
+# bundles the app into a standalone win executable
 pyinstaller>=6.0.0

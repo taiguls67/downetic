@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
+import math
 import os
 import queue
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -12,8 +15,10 @@ import tkinter as tk
 import webbrowser
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, simpledialog, ttk
 from urllib.parse import urlsplit
+
+from requests.exceptions import RequestException
 
 from downloader_app.downloader import select_engine
 from downloader_app.links import parse_urls
@@ -22,6 +27,11 @@ from downloader_app.manager import DownloadManager
 from downloader_app.media_links import MediaLink, ScanProgress, scan_media_pages
 from downloader_app.models import DownloadRecord
 from downloader_app.storage import Storage, default_data_directory
+from downloader_app.updates import (
+    RELEASES_PAGE_URL,
+    is_newer_version,
+    latest_release_version,
+)
 
 MAX_EVENTS_PER_TICK = 100
 COLORS = {
@@ -101,10 +111,40 @@ def format_size(size: int | None, unknown: str = "Unknown") -> str:
 def format_duration(seconds: float | None) -> str:
     if seconds is None:
         return "--"
+    if math.isnan(seconds):
+        return "--"
+    if math.isinf(seconds):
+        return "∞" if seconds > 0 else "00:00"
     seconds = max(0, int(seconds))
+    years, seconds = divmod(seconds, 365 * 24 * 3600)
+    months, seconds = divmod(seconds, 30 * 24 * 3600)
+    days, seconds = divmod(seconds, 24 * 3600)
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
-    return f"{hours:d}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
+    units = [
+        f"{value}{suffix}"
+        for value, suffix in (
+            (years, "y"),
+            (months, "m"),
+            (days, "g"),
+            (hours, "h"),
+            (minutes, "min"),
+            (seconds, "s"),
+        )
+        if value
+    ]
+    if years or months or days:
+        units = [
+            f"{value}{suffix}"
+            for value, suffix in (
+                (years, "y"),
+                (months, "m"),
+                (days, "g"),
+                (hours, "h"),
+            )
+            if value
+        ]
+    return " ".join(units[:2]) if units else "0s"
 
 
 class DownloadManagerApp:
@@ -141,8 +181,33 @@ class DownloadManagerApp:
         self.output_format = self.storage.get_setting("output_format", "original")
         if self.output_format not in {"original", "mp3", "mp4", "webm"}:
             self.output_format = "original"
+        self.browser_cookie_browser = self.storage.get_setting(
+            "browser_cookie_browser", ""
+        )
+        if self.browser_cookie_browser not in {"", "chrome", "edge"}:
+            self.browser_cookie_browser = ""
+        self.download_subtitles = self.storage.get_setting(
+            "download_subtitles", "0"
+        ) == "1"
+        self.torrent_vpn_address = self.storage.get_setting(
+            "torrent_vpn_address", ""
+        )
+        self.torrent_vpn_enabled = self.storage.get_setting(
+            "torrent_vpn_enabled", "0"
+        ) == "1"
+        if not self.torrent_vpn_address:
+            self.torrent_vpn_enabled = False
         self.events: queue.Queue[dict[str, object]] = queue.Queue()
-        self.manager = DownloadManager(self.events, self.simultaneous)
+        self.update_events: queue.Queue[str] = queue.Queue()
+        self.manager = DownloadManager(
+            self.events,
+            self.simultaneous,
+            self.browser_cookie_browser,
+            self.download_subtitles,
+        )
+        self.manager.set_torrent_vpn_address(
+            self.torrent_vpn_address if self.torrent_vpn_enabled else ""
+        )
         self.records: dict[int, DownloadRecord] = {}
         self.download_rows: dict[int, str] = {}
         self.history_rows: dict[int, str] = {}
@@ -164,6 +229,7 @@ class DownloadManagerApp:
         self._show_selected_progress()
         self.root.after(150, self._poll_events)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
+        self.root.after(1200, self._start_update_check)
 
     def _configure_style(self) -> None:
         style = ttk.Style(self.root)
@@ -348,6 +414,17 @@ class DownloadManagerApp:
             lambda: menu.entryconfigure(index, label=self._t(key))
         )
 
+    def _localize_context_menu_entry(self, index: int, key: str) -> None:
+        def update() -> None:
+            if index == 8 and not self._torrent_info_menu_visible:
+                return
+            menu_index = index
+            if not self._torrent_info_menu_visible and index > 8:
+                menu_index -= 1
+            self.context_menu.entryconfigure(menu_index, label=self._t(key))
+
+        self._register_localized(update)
+
     def _localize_tab(self, tab: ttk.Frame, key: str) -> None:
         self._register_localized(
             lambda: self.tabs.tab(tab, text=self._t(key))
@@ -398,6 +475,104 @@ class DownloadManagerApp:
         dialog.grab_set()
         close_button.focus_set()
         dialog.wait_window()
+
+    def _ask_confirmation(
+        self,
+        title: str,
+        message: str,
+        confirm_label: str,
+        cancel_label: str | None = None,
+    ) -> bool:
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        dialog.iconphoto(True, self._app_icon)
+
+        result = tk.BooleanVar(dialog, value=False)
+
+        def finish(confirmed: bool) -> None:
+            result.set(confirmed)
+            dialog.destroy()
+
+        content = ttk.Frame(dialog, padding=(16, 16, 16, 0))
+        content.pack(fill="both", expand=True)
+        ttk.Label(content, image=self.dialog_icons["warning"]).pack(
+            side="left", padx=(0, 14)
+        )
+        ttk.Label(
+            content,
+            text=message,
+            justify="left",
+            wraplength=440,
+        ).pack(side="left", fill="x", expand=True)
+
+        ttk.Separator(dialog, orient="horizontal").pack(
+            side="bottom", fill="x", padx=16, pady=(14, 0)
+        )
+        buttons = ttk.Frame(dialog, padding=(16, 6, 16, 8))
+        buttons.pack(side="bottom", fill="x")
+        cancel_button = ttk.Button(
+            buttons,
+            text=cancel_label or self._t("common.close"),
+            command=lambda: finish(False),
+            style="Dialog.TButton",
+        )
+        cancel_button.pack(side="right")
+        confirm_button = ttk.Button(
+            buttons,
+            text=confirm_label,
+            command=lambda: finish(True),
+            style="Dialog.TButton",
+        )
+        confirm_button.pack(side="right", padx=(0, 6))
+        dialog.bind("<Return>", lambda _event: confirm_button.invoke())
+        dialog.bind("<Escape>", lambda _event: finish(False))
+        dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+
+        self.root.update_idletasks()
+        dialog.update_idletasks()
+        width = dialog.winfo_reqwidth()
+        height = dialog.winfo_reqheight()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - height) // 2
+        dialog.geometry(f"+{max(0, x)}+{max(0, y)}")
+        dialog.grab_set()
+        cancel_button.focus_set()
+        dialog.wait_window()
+        return result.get()
+
+    def _start_update_check(self) -> None:
+        if self._closing:
+            return
+
+        def check() -> None:
+            try:
+                latest = latest_release_version()
+                if latest and is_newer_version(latest):
+                    self.update_events.put(latest)
+            except RequestException:
+                return
+            except ValueError as exc:
+                logging.getLogger(__name__).warning(
+                    "Unable to check for Downetic updates: %s", exc
+                )
+
+        threading.Thread(
+            target=check, name="github-update-check", daemon=True
+        ).start()
+
+    def _show_update_prompt(self, version: str) -> None:
+        confirmed = self._ask_confirmation(
+            self._t("update.title"),
+            self._t("update.available", version=version),
+            self._t("update.yes"),
+            self._t("update.no"),
+        )
+        if confirmed and not webbrowser.open(RELEASES_PAGE_URL):
+            logging.getLogger(__name__).warning(
+                "Unable to open the Downetic GitHub Releases page."
+            )
 
     def _show_info(self, title: str, message: str) -> None:
         self._show_message(title, message, "info")
@@ -512,6 +687,63 @@ class DownloadManagerApp:
         self._localize_menu_entry(format_menu, 0, "format.original")
         settings.add_cascade(label="Default format", menu=format_menu)
         self._localize_menu_entry(settings, 2, "settings.default_format")
+        browser_cookie_menu = tk.Menu(
+            settings, tearoff=False, background=COLORS["panel"],
+            activebackground=COLORS["selection"], activeforeground=COLORS["white"],
+        )
+        self.browser_cookie_menu = browser_cookie_menu
+        self.menu_browser_cookie_var = tk.StringVar(
+            self.root, value=self.browser_cookie_browser
+        )
+        for index, (browser, key) in enumerate((
+            ("", "settings.browser_cookies_off"),
+            ("chrome", None),
+            ("edge", None),
+        )):
+            label = self._t(key) if key else browser.title()
+            browser_cookie_menu.add_radiobutton(
+                label=label,
+                value=browser,
+                variable=self.menu_browser_cookie_var,
+                command=lambda selected=browser: self._set_browser_cookie_browser(
+                    selected
+                ),
+            )
+            if key:
+                self._register_localized(
+                    lambda index=index, key=key: browser_cookie_menu.entryconfigure(
+                        index, label=self._t(key)
+                    )
+                )
+        settings.add_cascade(label="Browser cookies", menu=browser_cookie_menu)
+        self._localize_menu_entry(settings, 3, "settings.browser_cookies")
+        subtitles_menu = tk.Menu(
+            settings, tearoff=False, background=COLORS["panel"],
+            activebackground=COLORS["selection"], activeforeground=COLORS["white"],
+        )
+        self.subtitles_menu = subtitles_menu
+        self.menu_subtitles_var = tk.BooleanVar(
+            self.root, value=self.download_subtitles
+        )
+        for index, (enabled, key) in enumerate((
+            (False, "settings.subtitles_off"),
+            (True, "settings.subtitles_on"),
+        )):
+            subtitles_menu.add_radiobutton(
+                label=self._t(key),
+                value=enabled,
+                variable=self.menu_subtitles_var,
+                command=lambda selected=enabled: self._set_download_subtitles(
+                    selected
+                ),
+            )
+            self._register_localized(
+                lambda index=index, key=key: subtitles_menu.entryconfigure(
+                    index, label=self._t(key)
+                )
+            )
+        settings.add_cascade(label="Download subtitles", menu=subtitles_menu)
+        self._localize_menu_entry(settings, 4, "settings.download_subtitles")
         language_menu = tk.Menu(
             settings, tearoff=False, background=COLORS["panel"],
             activebackground=COLORS["selection"], activeforeground=COLORS["white"],
@@ -607,17 +839,20 @@ class DownloadManagerApp:
         self.tabs = ttk.Notebook(self.root)
         self.tabs.pack(fill="both", expand=True, padx=2, pady=(0, 1))
         self.downloads_tab = ttk.Frame(self.tabs)
+        self.torrents_tab = ttk.Frame(self.tabs)
         self.grabber_tab = ttk.Frame(self.tabs)
         self.contribute_tab = ttk.Frame(self.tabs)
         self.history_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.downloads_tab, text="Downloads")
         self.tabs.add(self.grabber_tab, text="Link Grabber")
+        self.tabs.add(self.torrents_tab, text="Torrent")
         self.tabs.add(self.contribute_tab, text="Contribute")
         self.tabs.add(
             self.history_tab,
             text=self._t("tabs.history_count", count=0),
         )
         self._localize_tab(self.downloads_tab, "tabs.downloads")
+        self._localize_tab(self.torrents_tab, "tabs.torrents")
         self._localize_tab(self.grabber_tab, "tabs.link_grabber")
         self._localize_tab(self.contribute_tab, "tabs.contribute")
         self._register_localized(
@@ -630,16 +865,20 @@ class DownloadManagerApp:
         )
         self.tabs.hide(self.history_tab)
         self._build_contribute_page()
+        self._build_torrents_page()
         self._build_grabber_page()
         self.download_tree = self._build_tree(self.downloads_tab, "downloads")
         self.history_tree = self._build_tree(self.history_tab, "history")
         self.download_tree.bind("<<TreeviewSelect>>", self._show_selected_progress)
         self.history_tree.bind("<<TreeviewSelect>>", self._show_selected_progress)
+        self.download_tree.bind("<Double-1>", self._show_download_information)
+        self.history_tree.bind("<Double-1>", self._show_download_information)
         self.download_tree.bind("<Button-3>", self._show_download_context_menu)
         self.history_tree.bind("<Button-3>", self._show_download_context_menu)
         self.download_tree.bind("<Button-1>", self._clear_context_tree, add="+")
         self.history_tree.bind("<Button-1>", self._clear_context_tree, add="+")
         self.tabs.bind("<<NotebookTabChanged>>", self._clear_context_tree)
+        self.tabs.bind("<<NotebookTabChanged>>", self._on_tab_changed, add="+")
         self.context_menu = tk.Menu(
             self.root,
             tearoff=False,
@@ -648,6 +887,7 @@ class DownloadManagerApp:
             activebackground=COLORS["selection"],
             activeforeground=COLORS["white"],
         )
+        self._torrent_info_menu_visible = True
         context_labels = (
             "menu.start_resume",
             "toolbar.pause",
@@ -655,8 +895,9 @@ class DownloadManagerApp:
             "context.retry",
             None,
             "context.open_download_folder",
-            "context.open_url",
-            "context.copy_url",
+            None,
+            None,
+            "torrent.info",
             None,
             "context.rename",
             "context.remove",
@@ -672,6 +913,9 @@ class DownloadManagerApp:
         )
         self.context_menu.add_command(label="Open URL", command=self._open_selected_links)
         self.context_menu.add_command(label="Copy URL", command=self._copy_selected_links)
+        self.context_menu.add_command(
+            label="Torrent information", command=self._show_selected_torrent_info
+        )
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Rename...", command=self._rename_selected)
         self.context_menu.add_command(label="Remove from list", command=self._remove_selected)
@@ -680,15 +924,15 @@ class DownloadManagerApp:
         )
         for index, key in enumerate(context_labels):
             if key:
-                self._localize_menu_entry(self.context_menu, index, key)
-        self._localize_menu_entry(self.context_menu, 3, "context.retry")
+                self._localize_context_menu_entry(index, key)
 
         self._build_information_panel()
         self._build_quick_add()
         self.status_var = tk.StringVar()
-        ttk.Label(
+        self.status_label = ttk.Label(
             self.root, textvariable=self.status_var, relief="sunken", anchor="w", padding=(4, 1)
-        ).pack(side="bottom", fill="x")
+        )
+        self.status_label.pack(side="bottom", fill="x")
 
     def _create_empty_state(
         self,
@@ -786,9 +1030,10 @@ class DownloadManagerApp:
         cards = ttk.Frame(page)
         cards.pack(fill="both", expand=True)
         card_content = (
-            ("contribute.test_title", "contribute.test_body"),
-            ("contribute.feedback_title", "contribute.feedback_body"),
-            ("contribute.translate_title", "contribute.translate_body"),
+            ("help.quickstart_title", "help.quickstart_body"),
+            ("help.troubleshooting_title", "help.troubleshooting_body"),
+            ("help.report_title", "help.report_body"),
+            ("help.languages_title", "help.languages_body"),
         )
         for index, (title_key, body_key) in enumerate(card_content):
             card = ttk.LabelFrame(cards, text="", padding=(14, 12))
@@ -806,13 +1051,13 @@ class DownloadManagerApp:
             description.pack(fill="x")
             cards.columnconfigure(column, weight=1)
             cards.rowconfigure(row, weight=1)
-            if title_key == "contribute.translate_title":
+            if title_key == "help.languages_title":
                 open_folder = ttk.Button(
                     card,
                     text="",
                     command=self._open_locale_directory,
                 )
-                self._localize_widget(open_folder, "contribute.open_locales")
+                self._localize_widget(open_folder, "help.open_locales")
                 open_folder.pack(anchor="w", pady=(12, 0))
 
         template_button = ttk.Button(
@@ -820,7 +1065,7 @@ class DownloadManagerApp:
             text="",
             command=self._copy_contribution_template,
         )
-        self._localize_widget(template_button, "contribute.copy_template")
+        self._localize_widget(template_button, "help.copy_template")
         template_button.pack(anchor="e", padx=6, pady=(10, 0))
 
     def _open_locale_directory(self) -> None:
@@ -837,7 +1082,7 @@ class DownloadManagerApp:
         except tk.TclError as exc:
             self._show_error(self._t("messages.clipboard_error"), str(exc))
             return
-        self.status_var.set(self._t("contribute.template_copied"))
+        self.status_var.set(self._t("help.template_copied"))
 
     def _add_toolbar_action(
         self,
@@ -903,6 +1148,206 @@ class DownloadManagerApp:
             name: tk.PhotoImage(file=str(assets / filename)).subsample(5, 5)
             for name, filename in icon_files.items()
         }
+
+    def _build_torrents_page(self) -> None:
+        page = ttk.Frame(self.torrents_tab, padding=(14, 12))
+        page.pack(fill="both", expand=True)
+        hint = ttk.Label(
+            page,
+            text="",
+            style="Panel.TLabel",
+            wraplength=760,
+            justify="left",
+        )
+        self._localize_widget(hint, "torrent.paste_hint")
+        hint.pack(anchor="w", pady=(0, 6))
+        self.torrent_text = tk.Text(page, height=9, wrap="word", undo=True)
+        self.torrent_text.pack(fill="both", expand=True)
+        actions = ttk.Frame(page)
+        actions.pack(fill="x", pady=(8, 0))
+        add_button = ttk.Button(
+            actions,
+            text="",
+            command=self._add_torrent_links,
+        )
+        self._localize_widget(add_button, "torrent.add_links")
+        add_button.pack(side="left")
+        file_button = ttk.Button(
+            actions,
+            text="",
+            command=self._add_torrent_files,
+        )
+        self._localize_widget(file_button, "torrent.add_files")
+        file_button.pack(side="left", padx=(6, 0))
+        clipboard_button = ttk.Button(
+            actions,
+            text="",
+            command=self._add_torrent_clipboard,
+        )
+        self._localize_widget(clipboard_button, "torrent.add_clipboard")
+        clipboard_button.pack(side="left", padx=(6, 0))
+        vpn_frame = ttk.LabelFrame(
+            page,
+            text="",
+            padding=(10, 8),
+        )
+        self._localize_widget(vpn_frame, "torrent.vpn_section")
+        vpn_frame.pack(fill="x", pady=(12, 0))
+        vpn_controls = ttk.Frame(vpn_frame)
+        vpn_controls.pack(fill="x")
+        self.torrent_vpn_var = tk.BooleanVar(
+            value=self.torrent_vpn_enabled
+        )
+        vpn_check = ttk.Checkbutton(
+            vpn_controls,
+            text="",
+            variable=self.torrent_vpn_var,
+            command=self._set_torrent_vpn_enabled,
+        )
+        self._localize_widget(vpn_check, "torrent.bind_vpn")
+        vpn_check.pack(side="left")
+        self.torrent_vpn_combo = ttk.Combobox(
+            vpn_controls,
+            state="readonly",
+            width=42,
+        )
+        self.torrent_vpn_combo.pack(side="left", padx=(8, 5))
+        self.torrent_vpn_combo.bind(
+            "<<ComboboxSelected>>",
+            self._select_torrent_vpn_interface,
+        )
+        refresh_vpn_button = ttk.Button(
+            vpn_controls,
+            text="",
+            command=self._refresh_torrent_vpn_interfaces,
+        )
+        self._localize_widget(refresh_vpn_button, "torrent.refresh_vpn")
+        refresh_vpn_button.pack(side="left")
+        self.torrent_vpn_status = tk.StringVar()
+        ttk.Label(
+            vpn_frame,
+            textvariable=self.torrent_vpn_status,
+            style="Panel.TLabel",
+            wraplength=740,
+            justify="left",
+        ).pack(anchor="w", pady=(5, 0))
+        self._localized_updates.append(self._update_torrent_vpn_status)
+        self._refresh_torrent_vpn_interfaces(show_errors=False)
+
+    def _refresh_torrent_vpn_interfaces(
+        self,
+        _event: object = None,
+        *,
+        show_errors: bool = True,
+    ) -> None:
+        script = (
+            "$ErrorActionPreference = 'Stop'; "
+            "$up = @(Get-NetAdapter | Where-Object Status -eq 'Up' "
+            "| Select-Object -ExpandProperty InterfaceIndex); "
+            "$items = @(Get-NetIPAddress -AddressFamily IPv4 | "
+            "Where-Object { $up -contains $_.InterfaceIndex -and "
+            "$_.IPAddress -notlike '127.*' -and "
+            "$_.IPAddress -notlike '169.254.*' } | "
+            "Select-Object InterfaceAlias, IPAddress); "
+            "$json = ConvertTo-Json -InputObject $items -Compress; "
+            "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))"
+        )
+        try:
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    script,
+                ],
+                capture_output=True,
+                text=True,
+                encoding="ascii",
+                errors="replace",
+                timeout=10,
+                check=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            encoded = result.stdout.strip().splitlines()[-1]
+            data = json.loads(base64.b64decode(encoded).decode("utf-8"))
+        except (OSError, subprocess.SubprocessError, IndexError, ValueError) as exc:
+            self.torrent_vpn_interfaces = {}
+            self.torrent_vpn_combo.configure(values=())
+            self.torrent_vpn_combo.set("")
+            self.torrent_vpn_status.set(
+                self._t("torrent.vpn_error", error=exc)
+            )
+            if show_errors:
+                self._show_error(self._t("torrent.vpn_section"), str(exc))
+            return
+
+        if isinstance(data, dict):
+            data = [data]
+        if not isinstance(data, list):
+            raise ValueError("Unexpected VPN interface list returned by Windows.")
+        interfaces: dict[str, str] = {}
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            alias = item.get("InterfaceAlias")
+            address = item.get("IPAddress")
+            if isinstance(alias, str) and isinstance(address, str):
+                interfaces[f"{alias} ({address})"] = address
+        self.torrent_vpn_interfaces = interfaces
+        labels = tuple(interfaces)
+        self.torrent_vpn_combo.configure(values=labels)
+        selected_label = next(
+            (
+                label
+                for label, address in interfaces.items()
+                if address == self.torrent_vpn_address
+            ),
+            "",
+        )
+        self.torrent_vpn_combo.set(selected_label)
+        if self.torrent_vpn_enabled and not selected_label:
+            self.torrent_vpn_enabled = False
+            self.torrent_vpn_var.set(False)
+            self.storage.set_setting("torrent_vpn_enabled", "0")
+            self.manager.set_torrent_vpn_address("")
+        self._update_torrent_vpn_status()
+
+    def _select_torrent_vpn_interface(self, _event: object = None) -> None:
+        address = self.torrent_vpn_interfaces.get(self.torrent_vpn_combo.get())
+        if not address:
+            return
+        self.torrent_vpn_address = address
+        self.storage.set_setting("torrent_vpn_address", address)
+        if self.torrent_vpn_enabled:
+            self.manager.set_torrent_vpn_address(address)
+        self._update_torrent_vpn_status()
+
+    def _set_torrent_vpn_enabled(self) -> None:
+        enabled = self.torrent_vpn_var.get()
+        address = self.torrent_vpn_interfaces.get(self.torrent_vpn_combo.get())
+        if enabled and not address:
+            self.torrent_vpn_var.set(False)
+            self._show_warning(
+                self._t("torrent.vpn_section"),
+                self._t("torrent.vpn_select"),
+            )
+            self._update_torrent_vpn_status()
+            return
+        self.torrent_vpn_enabled = enabled
+        self.storage.set_setting("torrent_vpn_enabled", "1" if enabled else "0")
+        self.manager.set_torrent_vpn_address(address if enabled and address else "")
+        self._update_torrent_vpn_status()
+
+    def _update_torrent_vpn_status(self) -> None:
+        if self.torrent_vpn_enabled:
+            label = self.torrent_vpn_combo.get()
+            status = self._t("torrent.vpn_active", interface=label)
+        elif not self.torrent_vpn_interfaces:
+            status = self._t("torrent.vpn_none")
+        else:
+            status = self._t("torrent.vpn_disabled")
+        self.torrent_vpn_status.set(status)
 
     def _build_grabber_page(self) -> None:
         body = ttk.Frame(self.grabber_tab)
@@ -1148,6 +1593,7 @@ class DownloadManagerApp:
         panel = ttk.LabelFrame(
             self.root, text="Download information", padding=(5, 2)
         )
+        self.information_panel = panel
         self._localize_widget(panel, "details.panel")
         panel.pack(fill="x", padx=2, pady=(0, 1))
 
@@ -1187,6 +1633,7 @@ class DownloadManagerApp:
 
     def _build_quick_add(self) -> None:
         quick_add = ttk.Frame(self.root, padding=(3, 2))
+        self.quick_add_panel = quick_add
         quick_add.pack(fill="x", padx=1, pady=(0, 1))
         self._add_toolbar_action(
             quick_add, "add", "Add new links...", self._focus_grabber,
@@ -1231,8 +1678,8 @@ class DownloadManagerApp:
 
     def _build_tree(self, parent: ttk.Frame, mode: str) -> ttk.Treeview:
         columns = (
-            "name", "size", "host", "connection", "status", "speed",
-            "eta", "downloaded", "progress", "save_to", "comment",
+            "name", "size", "host", "connection", "status", "speed", "eta",
+            "downloaded", "progress", "save_to", "comment",
         )
         body = ttk.Frame(parent)
         body.pack(fill="both", expand=True)
@@ -1241,7 +1688,7 @@ class DownloadManagerApp:
             "name": "download.column.name",
             "size": "download.column.size",
             "host": "grabber.host",
-            "connection": "download.column.connection",
+            "connection": "torrent.seeds",
             "status": "download.column.status",
             "speed": "download.column.speed",
             "eta": "download.column.eta",
@@ -1257,10 +1704,20 @@ class DownloadManagerApp:
         }
         for column in columns:
             key = heading_keys[column]
-            tree.heading(column, text=self._t(key))
+            heading = (
+                f"{self._t('torrent.seeds')} / {self._t('torrent.peers')}"
+                if column == "connection"
+                else self._t(key)
+            )
+            tree.heading(column, text=heading)
             self._register_localized(
                 lambda col=column, translation_key=key: tree.heading(
-                    col, text=self._t(translation_key)
+                    col,
+                    text=(
+                        f"{self._t('torrent.seeds')} / {self._t('torrent.peers')}"
+                        if col == "connection"
+                        else self._t(translation_key)
+                    ),
                 )
             )
             tree.column(
@@ -1451,12 +1908,12 @@ class DownloadManagerApp:
         return label
 
     def _engine_label(self, engine: str) -> str:
-        if engine in {"auto", "http", "video"}:
+        if engine in {"auto", "http", "video", "torrent"}:
             return self._t(f"engine.{engine}")
         return engine
 
     def _engine_value(self, label: str) -> str:
-        for engine in ("auto", "http", "video"):
+        for engine in ("auto", "http", "video", "torrent"):
             if label == self._engine_label(engine):
                 return engine
         return label
@@ -1474,7 +1931,10 @@ class DownloadManagerApp:
 
     def _update_language_dependent_options(self) -> None:
         self.engine_combo.configure(
-            values=tuple(self._engine_label(engine) for engine in ("auto", "http", "video"))
+            values=tuple(
+                self._engine_label(engine)
+                for engine in ("auto", "http", "video", "torrent")
+            )
         )
         self.output_format_combo.configure(
             values=tuple(
@@ -1643,12 +2103,60 @@ class DownloadManagerApp:
         self._queue_links(urls)
         self.quick_link_var.set("")
 
-    def _queue_links(self, urls: list[str]) -> None:
-        engine = self._engine_value(self.engine_var.get())
-        output_format = self._output_format_value(self.output_format_var.get())
-        self.output_format = output_format
-        self.menu_format_var.set(output_format)
-        self.storage.set_setting("output_format", output_format)
+    def _add_torrent_links(self) -> None:
+        urls = parse_urls(self.torrent_text.get("1.0", "end"))
+        torrent_urls = [
+            url for url in urls
+            if urlsplit(url).scheme.lower() == "magnet"
+            or Path(urlsplit(url).path).suffix.lower() == ".torrent"
+        ]
+        if not torrent_urls:
+            self._show_warning(
+                self._t("messages.no_links_title"),
+                self._t("torrent.no_links"),
+            )
+            return
+        self._queue_links(torrent_urls, engine="torrent", output_format="original")
+        self.torrent_text.delete("1.0", "end")
+        self.tabs.select(self.downloads_tab)
+
+    def _add_torrent_clipboard(self) -> None:
+        try:
+            clipboard_text = self.root.clipboard_get()
+        except tk.TclError:
+            self._show_warning(
+                self._t("messages.clipboard_empty_title"),
+                self._t("messages.clipboard_empty_text"),
+            )
+            return
+        self.torrent_text.delete("1.0", "end")
+        self.torrent_text.insert("1.0", clipboard_text)
+        self._add_torrent_links()
+
+    def _add_torrent_files(self) -> None:
+        selected = filedialog.askopenfilenames(
+            title=self._t("torrent.choose_files"),
+            filetypes=((self._t("torrent.filetype"), "*.torrent"),),
+        )
+        if not selected:
+            return
+        self._queue_links(list(selected), engine="torrent", output_format="original")
+        self.tabs.select(self.downloads_tab)
+
+    def _queue_links(
+        self,
+        urls: list[str],
+        engine: str | None = None,
+        output_format: str | None = None,
+    ) -> None:
+        engine = engine or self._engine_value(self.engine_var.get())
+        save_selected_format = output_format is None
+        if output_format is None:
+            output_format = self._output_format_value(self.output_format_var.get())
+        if save_selected_format:
+            self.output_format = output_format
+            self.menu_format_var.set(output_format)
+            self.storage.set_setting("output_format", output_format)
         for url in urls:
             download_id = self.storage.add_download(
                 url, self.download_directory, engine, output_format
@@ -1685,11 +2193,12 @@ class DownloadManagerApp:
         comment = record.error
         if not comment and record.output_format != "original":
             comment = record.output_format.upper()
+        is_torrent = select_engine(record.url, record.engine) == "torrent"
         values = (
             record.filename,
             format_size(record.total, self._t("common.unknown")),
-            host,
-            "-",
+            record.torrent_tracker or host or "-",
+            f"{record.seeds} / {record.peers}" if is_torrent else "-",
             status_label,
             f"{format_size(int(record.speed), self._t('common.unknown'))}/s"
             if record.speed > 0
@@ -1698,7 +2207,7 @@ class DownloadManagerApp:
             format_size(record.progress, self._t("common.unknown")),
             self._progress_bar(record),
             record.destination,
-            comment,
+            comment or "-",
         )
         tags = (record.status,)
         self._upsert_tree_row(
@@ -1771,6 +2280,12 @@ class DownloadManagerApp:
                 self.status_var.set(
                     self._t("status.update_error", error=exc)
                 )
+        try:
+            available_version = self.update_events.get_nowait()
+        except queue.Empty:
+            pass
+        else:
+            self._show_update_prompt(available_version)
         if changed:
             self._refresh_status()
             self._show_selected_progress()
@@ -1779,6 +2294,26 @@ class DownloadManagerApp:
     def _selected_ids(self) -> list[int]:
         tree = self._context_tree or self._active_tree()
         return [int(item) for item in tree.selection() if item.isdigit()]
+
+    def _downloaded_path(self, record: DownloadRecord) -> Path | None:
+        is_torrent = select_engine(record.url, record.engine) == "torrent"
+        if is_torrent:
+            if record.status not in {"completed", "cancelled", "error"}:
+                return None
+            if not record.torrent_directory:
+                return None
+            path = Path(record.torrent_directory)
+            destination = Path(record.destination)
+            if path.is_symlink() or not path.is_dir():
+                return None
+            if path.resolve().parent != destination.resolve():
+                return None
+            return path.resolve()
+
+        path = Path(record.destination) / record.filename
+        if record.status != "completed" or path.is_symlink() or not path.is_file():
+            return None
+        return path
 
     def _clear_context_tree(self, _event: object = None) -> None:
         self._context_tree = None
@@ -1801,9 +2336,35 @@ class DownloadManagerApp:
             "paused", "cancelled", "error", "completed",
         }
         can_delete = bool(records) and all(
-            record.status == "completed"
-            and (Path(record.destination) / record.filename).is_file()
+            self._downloaded_path(record) is not None for record in records
+        )
+        torrents_only = bool(records) and all(
+            select_engine(record.url, record.engine) == "torrent"
             for record in records
+        )
+        single_torrent = (
+            len(records) == 1
+            and select_engine(records[0].url, records[0].engine) == "torrent"
+        )
+        if single_torrent and not self._torrent_info_menu_visible:
+            self.context_menu.insert_command(
+                8,
+                label=self._t("torrent.info"),
+                command=self._show_selected_torrent_info,
+            )
+            self._torrent_info_menu_visible = True
+        elif not single_torrent and self._torrent_info_menu_visible:
+            self.context_menu.delete(8)
+            self._torrent_info_menu_visible = False
+        self.context_menu.entryconfigure(
+            6,
+            label=self._t("context.open_magnet") if torrents_only
+            else self._t("context.open_url"),
+        )
+        self.context_menu.entryconfigure(
+            7,
+            label=self._t("context.copy_magnet") if torrents_only
+            else self._t("context.copy_url"),
         )
         self.context_menu.entryconfigure(
             0,
@@ -1824,20 +2385,32 @@ class DownloadManagerApp:
                 )
                 else "disabled",
             )
+        self.context_menu.entryconfigure(
+            3, state="normal" if can_retry else "disabled"
+        )
+        for index in (6, 7, 11):
             self.context_menu.entryconfigure(
-                3, state="normal" if can_retry else "disabled"
+                self._context_menu_index(index),
+                state="normal" if records else "disabled",
             )
-            for index in (6, 7, 10):
-                self.context_menu.entryconfigure(
-                    index, state="normal" if records else "disabled"
-                )
-            self.context_menu.entryconfigure(9, state="normal" if can_rename else "disabled")
-            self.context_menu.entryconfigure(11, state="normal" if can_delete else "disabled")
+        self.context_menu.entryconfigure(
+            self._context_menu_index(10),
+            state="normal" if can_rename else "disabled",
+        )
+        self.context_menu.entryconfigure(
+            self._context_menu_index(12),
+            state="normal" if can_delete else "disabled",
+        )
         try:
             self.context_menu.tk_popup(event.x_root, event.y_root)
         finally:
             self.context_menu.grab_release()
         return "break"
+
+    def _context_menu_index(self, index: int) -> int:
+        if not self._torrent_info_menu_visible and index > 8:
+            return index - 1
+        return index
 
     def _resume_selected(self) -> None:
         for download_id in self._selected_ids():
@@ -1861,6 +2434,288 @@ class DownloadManagerApp:
             os.startfile(folder)
         except OSError as exc:
             self._show_error(self._t("messages.folder_error"), str(exc))
+
+    def _show_selected_torrent_info(self) -> None:
+        selected = self._selected_ids()
+        if len(selected) != 1 or selected[0] not in self.records:
+            return
+        record = self.records[selected[0]]
+        if select_engine(record.url, record.engine) != "torrent":
+            return
+        total = format_size(record.total, self._t("common.unknown"))
+        downloaded = format_size(record.progress, self._t("common.unknown"))
+        speed = (
+            f"{format_size(int(record.speed), self._t('common.unknown'))}/s"
+            if record.speed > 0
+            else "-"
+        )
+        details = (
+            (self._t("download.column.name"), record.filename),
+            (
+                self._t("download.column.status"),
+                self._t(f"download.status.{record.status}"),
+            ),
+            (self._t("download.column.size"), total),
+            (self._t("download.column.downloaded"), downloaded),
+            (self._t("download.column.speed"), speed),
+            (self._t("torrent.seeds"), str(record.seeds)),
+            (self._t("torrent.peers"), str(record.peers)),
+            (self._t("download.column.save_to"), record.destination),
+        )
+        files = json.loads(record.torrent_files)
+        if not isinstance(files, list):
+            raise ValueError(f"Invalid torrent file list for download {record.id}")
+        file_rows: list[tuple[str, str]] = []
+        for item in files:
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("path"), str)
+                or not isinstance(item.get("size"), int)
+            ):
+                raise ValueError(f"Invalid torrent file entry for download {record.id}")
+            file_rows.append(
+                (
+                    item["path"],
+                    format_size(item["size"], self._t("common.unknown")),
+                )
+            )
+        selected_files = None
+        if record.torrent_selected_files:
+            selected_values = json.loads(record.torrent_selected_files)
+            if not isinstance(selected_values, list) or not all(
+                isinstance(value, str) for value in selected_values
+            ):
+                raise ValueError(
+                    f"Invalid selected torrent files for download {record.id}"
+                )
+            selected_files = set(selected_values)
+        self._show_torrent_info_dialog(
+            self._t("torrent.info"),
+            details,
+            record.url,
+            self._t("torrent.files"),
+            self._t("torrent.file_count", count=len(file_rows)),
+            self._t("download.column.name"),
+            self._t("download.column.size"),
+            file_rows,
+            selected_files=selected_files,
+            on_selection_changed=(
+                lambda paths: self._save_torrent_file_selection(record, paths)
+            ),
+            selection_enabled=record.status != "completed",
+        )
+
+    def _save_torrent_file_selection(
+        self, record: DownloadRecord, selected_files: set[str]
+    ) -> None:
+        if not selected_files:
+            return
+        serialized = json.dumps(sorted(selected_files), ensure_ascii=False)
+        self.storage.update_download(
+            record.id, torrent_selected_files=serialized
+        )
+        record.torrent_selected_files = serialized
+        self.manager.set_torrent_file_selection(record.id, selected_files)
+
+    def _show_torrent_info_dialog(
+        self,
+        title: str,
+        details: tuple[tuple[str, str], ...],
+        url: str,
+        files_heading: str,
+        file_count: str,
+        name_heading: str,
+        size_heading: str,
+        files: list[tuple[str, str]],
+        *,
+        selected_files: set[str] | None = None,
+        on_selection_changed: Callable[[set[str]], None] | None = None,
+        selection_enabled: bool = True,
+    ) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.transient(self.root)
+        dialog.geometry("760x570")
+        dialog.minsize(580, 400)
+        dialog.iconphoto(True, self._app_icon)
+
+        content = ttk.Frame(dialog, padding=16)
+        content.pack(fill="both", expand=True)
+        header = ttk.Frame(content, style="Toolbar.TFrame", padding=(12, 9))
+        header.pack(fill="x", pady=(0, 12))
+        ttk.Label(
+            header,
+            text=title,
+            font=("Tahoma", 12, "bold"),
+            foreground=COLORS["blue_dark"],
+        ).pack(anchor="w")
+        ttk.Label(
+            header,
+            text=details[0][1],
+            style="Panel.TLabel",
+        ).pack(anchor="w", pady=(3, 0))
+
+        detail_frame = ttk.LabelFrame(
+            content,
+            text=self._t("torrent.details"),
+            padding=(12, 10),
+        )
+        detail_frame.pack(fill="x", pady=(0, 12))
+        for column, width in ((1, 1), (3, 1)):
+            detail_frame.columnconfigure(column, weight=width)
+        for index, (label, value) in enumerate(details[1:]):
+            row, pair = divmod(index, 2)
+            label_column = pair * 2
+            value_column = label_column + 1
+            ttk.Label(
+                detail_frame,
+                text=label,
+                style="Panel.TLabel",
+            ).grid(
+                row=row,
+                column=label_column,
+                sticky="nw",
+                padx=(0, 8),
+                pady=3,
+            )
+            value_label = ttk.Label(
+                detail_frame,
+                text=value,
+                wraplength=280 if pair else 420,
+                justify="left",
+            )
+            value_label.grid(
+                row=row,
+                column=value_column,
+                columnspan=3 if pair == 0 else 1,
+                sticky="ew",
+                padx=(0, 16 if pair == 0 else 0),
+                pady=3,
+            )
+
+        url_row = len(details[1:]) // 2 + 1
+        ttk.Label(
+            detail_frame,
+            text=self._t("torrent.url"),
+            style="Panel.TLabel",
+        ).grid(row=url_row, column=0, sticky="w", padx=(0, 8), pady=(8, 0))
+        url_var = tk.StringVar(value=url)
+        url_entry = ttk.Entry(
+            detail_frame,
+            textvariable=url_var,
+            state="readonly",
+        )
+        url_entry.grid(
+            row=url_row,
+            column=1,
+            columnspan=2,
+            sticky="ew",
+            pady=(8, 0),
+        )
+        url_entry.xview_moveto(0)
+        ttk.Button(
+            detail_frame,
+            text=self._t("context.copy_magnet"),
+            command=self._copy_selected_links,
+            style="Dialog.TButton",
+        ).grid(row=url_row, column=3, sticky="e", padx=(8, 0), pady=(8, 0))
+
+        files_frame = ttk.LabelFrame(
+            content,
+            text=files_heading,
+            padding=(8, 6),
+        )
+        files_frame.pack(fill="both", expand=True)
+        ttk.Label(
+            files_frame,
+            text=file_count,
+            style="Panel.TLabel",
+        ).pack(anchor="w", pady=(0, 5))
+        tree_frame = ttk.Frame(files_frame)
+        tree_frame.pack(fill="both", expand=True)
+        file_list = ttk.Treeview(
+            tree_frame,
+            columns=("name", "size"),
+            show="tree headings",
+            selectmode="browse",
+        )
+        file_list.heading("#0", text="")
+        file_list.heading("name", text=name_heading)
+        file_list.heading("size", text=size_heading)
+        file_list.column("#0", width=32, minwidth=32, stretch=False, anchor="center")
+        file_list.column("name", width=520, minwidth=180, anchor="w", stretch=True)
+        file_list.column("size", width=100, minwidth=80, anchor="e", stretch=False)
+        file_list.tag_configure("odd", background=COLORS["panel"])
+        file_list.tag_configure("even", background=COLORS["list"])
+        for index, (name, size) in enumerate(files):
+            checked = selected_files is None or name in selected_files
+            file_list.insert(
+                "",
+                "end",
+                iid=str(index),
+                text="☑" if checked else "☐",
+                values=(name, size),
+                tags=("even" if index % 2 == 0 else "odd",),
+            )
+
+        def toggle_file_selection(event: tk.Event) -> str | None:
+            if (
+                not selection_enabled
+                or on_selection_changed is None
+                or file_list.identify_column(event.x) != "#0"
+            ):
+                return None
+            item = file_list.identify_row(event.y)
+            if not item or not item.isdigit():
+                return "break"
+            checked = file_list.item(item, "text") == "☑"
+            if checked and sum(
+                file_list.item(child, "text") == "☑"
+                for child in file_list.get_children("")
+            ) == 1:
+                return "break"
+            file_list.item(item, text="☐" if checked else "☑")
+            selected = {
+                str(file_list.item(child, "values")[0])
+                for child in file_list.get_children("")
+                if file_list.item(child, "text") == "☑"
+            }
+            on_selection_changed(selected)
+            return "break"
+
+        file_list.bind("<Button-1>", toggle_file_selection, add="+")
+        scrollbar = ttk.Scrollbar(
+            tree_frame, orient="vertical", command=file_list.yview
+        )
+        horizontal = ttk.Scrollbar(
+            tree_frame, orient="horizontal", command=file_list.xview
+        )
+        file_list.configure(
+            yscrollcommand=scrollbar.set,
+            xscrollcommand=horizontal.set,
+        )
+        file_list.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        horizontal.grid(row=1, column=0, sticky="ew")
+        tree_frame.rowconfigure(0, weight=1)
+        tree_frame.columnconfigure(0, weight=1)
+        if not files:
+            file_list.insert("", "end", values=("-", "-"))
+
+        buttons = ttk.Frame(content)
+        buttons.pack(fill="x", pady=(10, 0))
+        close_button = ttk.Button(
+            buttons,
+            text=self._t("common.close"),
+            command=dialog.destroy,
+            style="Dialog.TButton",
+        )
+        close_button.pack(side="right")
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.grab_set()
+        close_button.focus_set()
+        dialog.wait_window()
 
     def _rename_selected(self) -> None:
         selected = self._selected_ids()
@@ -1939,10 +2794,10 @@ class DownloadManagerApp:
         selected = self._selected_ids()
         if not selected:
             return
-        if not messagebox.askyesno(
+        if not self._ask_confirmation(
             self._t("messages.remove_title"),
             self._t("messages.remove_confirm", count=len(selected)),
-            parent=self.root,
+            self._t("context.remove"),
         ):
             return
         self._remove_downloads(selected)
@@ -1981,25 +2836,27 @@ class DownloadManagerApp:
         if not selected:
             return
         records = [self.records[item] for item in selected if item in self.records]
-        paths = [Path(record.destination) / record.filename for record in records]
-        if not records or any(
-            record.status != "completed" or not path.is_file()
-            for record, path in zip(records, paths)
-        ):
+        paths = [self._downloaded_path(record) for record in records]
+        if not records or any(path is None for path in paths):
             self._show_error(
                 self._t("messages.delete_title"),
                 self._t("messages.delete_only_completed"),
             )
             return
-        if not messagebox.askyesno(
+        if not self._ask_confirmation(
             self._t("messages.delete_title"),
             self._t("messages.delete_confirm", count=len(paths)),
-            parent=self.root,
+            self._t("context.delete_downloaded_file"),
         ):
             return
         try:
             for path in paths:
-                path.unlink()
+                if path is None:
+                    continue
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
         except OSError as exc:
             self._show_error(
                 self._t("messages.delete_failed"), str(exc)
@@ -2023,6 +2880,11 @@ class DownloadManagerApp:
                 record.engine,
                 record.output_format,
             )
+            if record.torrent_selected_files:
+                self.storage.update_download(
+                    retry_id,
+                    torrent_selected_files=record.torrent_selected_files,
+                )
             retry_record = next(
                 item
                 for item in self.storage.get_downloads()
@@ -2085,6 +2947,24 @@ class DownloadManagerApp:
         self.output_format_var.set(self._output_format_label(output_format))
         self.storage.set_setting("output_format", output_format)
 
+    def _set_browser_cookie_browser(self, browser: str) -> None:
+        if browser not in {"", "chrome", "edge"}:
+            self.menu_browser_cookie_var.set(self.browser_cookie_browser)
+            raise ValueError(f"Unsupported browser for cookies: {browser}")
+        self.browser_cookie_browser = browser
+        self.menu_browser_cookie_var.set(browser)
+        self.manager.set_browser_cookie_browser(browser)
+        self.storage.set_setting("browser_cookie_browser", browser)
+
+    def _set_download_subtitles(self, enabled: bool) -> None:
+        self.download_subtitles = bool(enabled)
+        self.menu_subtitles_var.set(self.download_subtitles)
+        self.manager.set_download_subtitles(self.download_subtitles)
+        self.storage.set_setting(
+            "download_subtitles",
+            "1" if self.download_subtitles else "0",
+        )
+
     def _choose_directory(self) -> None:
         selected = filedialog.askdirectory(
             title=self._t("settings.download_folder"),
@@ -2123,9 +3003,14 @@ class DownloadManagerApp:
         except tk.TclError:
             self.link_text.focus_set()
 
+    def _on_tab_changed(self, _event: object = None) -> None:
+        if self.tabs.select() == str(self.downloads_tab):
+            self._show_selected_progress()
+
     def _select_tab(self, tab: str) -> None:
         tab_frame = {
             "downloads": self.downloads_tab,
+            "torrents": self.torrents_tab,
             "grabber": self.grabber_tab,
             "history": self.history_tab,
             "contribute": self.contribute_tab,
@@ -2248,6 +3133,35 @@ class DownloadManagerApp:
                     percent=f"{percent:.0f}",
                 )
             )
+
+    def _show_download_information(self, event: tk.Event) -> str:
+        tree = event.widget
+        if not isinstance(tree, ttk.Treeview):
+            return "break"
+        item = tree.identify_row(event.y)
+        if not item:
+            return "break"
+        tree.selection_set(item)
+        tree.focus(item)
+
+        if not self.status_label.winfo_manager():
+            self.status_label.pack(side="bottom", fill="x")
+        if not self.quick_add_panel.winfo_manager():
+            self.quick_add_panel.pack(
+                before=self.status_label,
+                fill="x",
+                padx=1,
+                pady=(0, 1),
+            )
+        if not self.information_panel.winfo_manager():
+            self.information_panel.pack(
+                before=self.quick_add_panel,
+                fill="x",
+                padx=2,
+                pady=(0, 1),
+            )
+        self._show_selected_progress()
+        return "break"
 
     def _refresh_status(self) -> None:
         records = list(self.records.values())

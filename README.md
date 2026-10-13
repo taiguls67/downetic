@@ -17,37 +17,78 @@ downloads from a single place.
 Get the ready-to-use Windows build from
 [Downetic Releases](https://github.com/taiguls67/downetic/releases).
 Download the latest release and follow any instructions included with it.
+At startup, Downetic checks GitHub for a newer release and can open the Releases
+page when you choose to view it; updates are not installed automatically.
 
 ## What it can do
 
-- Add one or more HTTP or HTTPS links, including links copied to the clipboard.
+- Add one or more HTTP, HTTPS, magnet, or `.torrent` links, including links
+  copied to the clipboard.
 - Scan a page for direct video, audio, and streaming links. Filter results by
   file type or host, search them, then queue, open, or copy selected links.
 - Download files over HTTP, resuming partial downloads when the server supports
-  it, or use yt-dlp for supported video and audio sites.
+  it, use yt-dlp for supported video and audio sites, or download torrents
+  through libtorrent.
 - Pause, resume, cancel, retry, and manage several downloads at once.
 - Choose a download folder and save download history and preferences locally.
 - See a Windows notification when a download finishes.
 - Use the interface in any of 20 languages.
 
-Page scanning reads the page's HTML. Media added later by page scripts may not
-be found. Site support depends on the site and the media format.
+Page scanning checks media tags, lazy-loaded sources, player URLs in page
+scripts, and embedded player frames (up to two levels deep). It also uses
+yt-dlp to recognize supported video pages even when playback has not started.
+If Chrome or Edge is installed, it also opens pages headlessly and checks
+JavaScript-generated markup and media-stream requests, without clicking Play.
+The browser scan uses a temporary profile and does not reuse browser sessions.
+Media loaded only after user interaction may still not be found. Site support
+depends on the site and the media format.
 
 ## Screenshots
 
 **Link grabber**
 
-<p><img src="https://i.imgur.com/bbnqwbj.png" alt="Downetic link grabber" width="900"></p>
+<p><img src="https://i.imgur.com/30MMJt8.png" alt="Downetic link grabber" width="900"></p>
 
 **Completed download**
 
-<p><img src="https://i.imgur.com/RqwDTta.png" alt="Downetic showing a completed download" width="900"></p>
+<p><img src="https://i.imgur.com/goKqxpq.png" alt="Downetic showing a completed download" width="900"></p>
 
 ## YouTube and other video sites
 
-Video downloads use yt-dlp. YouTube may also need a JavaScript runtime:
+Video downloads use yt-dlp, which includes extractors for TikTok video pages and
+TikTok share links (`vm.tiktok.com`, `vt.tiktok.com`, and `tiktok.com/t/...`).
+Paste a link to one video; profile, tag, music, and collection pages are not
+downloaded automatically. TikTok may change its service, so availability can
+vary over time. If TikTok rejects an anonymous request, choose Chrome or Edge
+under **Settings > Browser cookies** and retry. This opt-in setting applies to
+all yt-dlp video-site downloads, not only TikTok. yt-dlp reads cookies from
+the selected browser locally; turn the setting off from the same menu whenever
+you like. On Windows, if Chrome locks its cookie database, Downetic retries
+using a temporary SQLite snapshot and removes that snapshot when the operation
+ends. Cookies are not used for ordinary HTTP file downloads.
+
+YouTube may also need a JavaScript runtime:
 [Node.js](https://nodejs.org/) LTS is recommended; Deno and Bun are also
 supported when available on `PATH`.
+
+Enable **Settings > Download subtitles** to save available manually supplied
+and automatic subtitles alongside video downloads. The default is off.
+
+If a video download fails, Downetic gives a suggested next step for common
+problems such as an unsupported URL, unavailable format, HTTP 403/429, or a
+site response yt-dlp cannot parse. The original extractor details remain
+included to help diagnose site-side changes.
+
+## Torrent downloads
+
+Downetic recognizes magnet links and `.torrent` URLs automatically. You can also
+open the **Torrent** tab to paste magnet links, paste `.torrent` URLs, or choose
+local `.torrent` files. Torrent downloads use libtorrent, save each torrent into
+its own folder inside the selected download directory, and support pause, resume,
+cancel, progress, speed, and ETA updates. Open **Torrent information** from a
+torrent's context menu to select which files to download; the selection is saved
+and applied while the torrent is active. The **Host** column shows one tracker
+and the count of additional trackers.
 
 ## Run from source
 
@@ -78,7 +119,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --name Downetic `
   --icon "downloader_app\assets\icons\main_ico.ico" `
   --add-data "downloader_app\assets;downloader_app\assets" `
   --add-data "downloader_app\locales;downloader_app\locales" `
-  --collect-all yt_dlp --collect-all yt_dlp_ejs main.py
+  --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all libtorrent main.py
 ```
 
 The app is created at `dist\Downetic.exe`. Its first launch may take longer.
@@ -123,7 +164,9 @@ node .\tests\js\verify-release.mjs
 ## Files and privacy
 
 Downloads are saved in the folder you choose. Settings and download history
-are stored locally under `%LOCALAPPDATA%\Downetic`.
+are stored locally under `%LOCALAPPDATA%\Downetic`. Installing a newer release
+over an existing installation reuses its install folder and preserves these
+settings and download history.
 
 ## Tests
 

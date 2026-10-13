@@ -4,18 +4,22 @@ import re
 from urllib.parse import urlsplit
 
 
-URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+URL_PATTERN = re.compile(r"(?:https?://|magnet:\?)[^\s<>\"']+", re.IGNORECASE)
 
 
 def parse_urls(text: str) -> list[str]:
-    """Extract unique HTTP(S) links, preserving their input order."""
+    """Extract unique HTTP(S) and magnet links, preserving their input order."""
     results: list[str] = []
     seen: set[str] = set()
     for match in URL_PATTERN.findall(text):
         # trim punctuation grabbed from the sentence, not the link.
         url = match.rstrip(".,;:!?)]}")
         parsed = urlsplit(url)
-        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        scheme = parsed.scheme.lower()
+        if scheme == "magnet":
+            if not parsed.query:
+                continue
+        elif scheme not in {"http", "https"} or not parsed.netloc:
             continue
         normalized = url.strip()
         key = normalized.casefold()

@@ -19,6 +19,12 @@ class DownloadRecord:
     error: str
     created_at: str
     output_format: str = "original"
+    seeds: int = 0
+    peers: int = 0
+    torrent_files: str = "[]"
+    torrent_directory: str = ""
+    torrent_selected_files: str = ""
+    torrent_tracker: str = ""
 
 
 @dataclass

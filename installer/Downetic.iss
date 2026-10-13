@@ -1,4 +1,4 @@
-#define AppVersion "0.1.0-beta.3"
+#define AppVersion "0.1.1-beta.4"
 #define NodeVersion "v24.21.0"
 #define NodeArchive "node-v24.21.0-win-x64.zip"
 #define NodeSHA256 "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541"
@@ -15,6 +15,9 @@ AppPublisher=Downetic
 AppPublisherURL=https://github.com/taiguls67/downetic
 AppSupportURL=https://github.com/taiguls67/downetic
 DefaultDirName={localappdata}\Programs\Downetic
+UsePreviousAppDir=yes
+CloseApplications=force
+RestartApplications=no
 DefaultGroupName=Downetic
 UninstallDisplayName=Downetic v{#AppVersion}
 UninstallDisplayIcon={app}\Downetic.exe

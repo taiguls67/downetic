@@ -40,6 +40,10 @@ class Storage:
                     destination TEXT NOT NULL,
                     engine TEXT NOT NULL DEFAULT 'auto',
                     output_format TEXT NOT NULL DEFAULT 'original',
+                    torrent_files TEXT NOT NULL DEFAULT '[]',
+                    torrent_directory TEXT NOT NULL DEFAULT '',
+                    torrent_selected_files TEXT NOT NULL DEFAULT '',
+                    torrent_tracker TEXT NOT NULL DEFAULT '',
                     error TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )"""
@@ -53,6 +57,26 @@ class Storage:
                 self._connection.execute(
                     "ALTER TABLE downloads ADD COLUMN output_format "
                     "TEXT NOT NULL DEFAULT 'original'"
+                )
+            if "torrent_files" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE downloads ADD COLUMN torrent_files "
+                    "TEXT NOT NULL DEFAULT '[]'"
+                )
+            if "torrent_directory" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE downloads ADD COLUMN torrent_directory "
+                    "TEXT NOT NULL DEFAULT ''"
+                )
+            if "torrent_selected_files" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE downloads ADD COLUMN torrent_selected_files "
+                    "TEXT NOT NULL DEFAULT ''"
+                )
+            if "torrent_tracker" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE downloads ADD COLUMN torrent_tracker "
+                    "TEXT NOT NULL DEFAULT ''"
                 )
             self._connection.execute(
                 """CREATE TABLE IF NOT EXISTS settings (
@@ -81,7 +105,9 @@ class Storage:
     def update_download(self, download_id: int, **fields: object) -> None:
         allowed = {
             "filename", "status", "progress", "total", "speed", "eta",
-            "destination", "engine", "output_format", "error",
+            "destination", "engine", "output_format", "torrent_files",
+            "torrent_directory", "torrent_selected_files", "torrent_tracker",
+            "error",
         }
         updates = {key: value for key, value in fields.items() if key in allowed}
         if not updates:
