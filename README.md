@@ -1,6 +1,15 @@
 # Downetic
 
-<p><img src="downloader_app/assets/icons/text_ico.png" alt="Downetic app logo" width="600"></p>
+<p align="center">
+  <img src="downloader_app/assets/icons/text_ico.png" alt="Downetic app logo" width="600">
+</p>
+
+<p align="center">
+  <a href="https://github.com/taiguls67/downetic/releases"><img src="https://img.shields.io/github/v/release/taiguls67/downetic?include_prereleases&label=release" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2B-blue" alt="Platform: Windows 10 and newer">
+  <img src="https://img.shields.io/badge/torrents-libtorrent-brightgreen" alt="Torrent downloads powered by libtorrent">
+  <img src="https://img.shields.io/badge/languages-20-brightgreen" alt="Available in 20 languages">
+</p>
 
 **A straightforward download manager for Windows.**
 
