@@ -2,55 +2,76 @@
 
 <p align="center">
   <img src="downloader_app/assets/icons/text_ico.png" alt="Downetic app logo" width="600">
-</p>
-
-<p align="center">
+  <br>
   <a href="https://github.com/taiguls67/downetic/releases"><img src="https://img.shields.io/github/v/release/taiguls67/downetic?include_prereleases&label=release" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%2010%2B-blue" alt="Platform: Windows 10 and newer">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2022H2%2B-blue" alt="Platform: Windows 10 version 22H2 and newer">
   <img src="https://img.shields.io/badge/torrents-libtorrent-brightgreen" alt="Torrent downloads powered by libtorrent">
   <img src="https://img.shields.io/badge/languages-20-brightgreen" alt="Available in 20 languages">
 </p>
 
-**A straightforward download manager for Windows.**
+<p align="center"><strong>Downloads · Find Links · BitTorrent</strong></p>
 
-Downetic brings regular downloads and media links together in one desktop app.
-Paste links, scan pages for media, and keep an eye on active and finished
-downloads from a single place.
+One app for **HTTP/HTTPS files**, supported video sites, media discovered on
+web pages, and **magnet or `.torrent` downloads**.
 
-> **Beta:** Downetic is still being tested and improved. Some sites or media
-> formats may not work as expected. If you run into a problem, please report it
-> from the Help tab.
+> **Beta:** Some sites and formats may change or stop working. Found a problem?
+> Report it from the app's **Help** tab.
+
+## Contents
+
+- [Download](#download)
+- [Features](#features)
+- [Find Links](#find-links)
+- [Torrent downloads](#torrent-downloads)
+- [Video and audio sites](#video-and-audio-sites)
+- [Screenshots](#screenshots)
+- [Run from source](#run-from-source)
+- [Build for Windows](#build-for-windows)
+- [Files and privacy](#files-and-privacy)
+- [Tests](#tests)
 
 ## Download
 
-Get the ready-to-use Windows build from
-[Downetic Releases](https://github.com/taiguls67/downetic/releases).
-Download the latest release and follow any instructions included with it.
-At startup, Downetic checks GitHub for a newer release and can open the Releases
-page when you choose to view it; updates are not installed automatically.
+1. Download the latest **Windows installer** from
+   [GitHub Releases](https://github.com/taiguls67/downetic/releases).
+2. Run it and follow the prompts.
+3. Open Downetic and paste a link, scan a page, or add a torrent.
 
-## What it can do
+Installing a newer version **keeps your settings and download history**.
+Downetic can notify you when a release is available; it never installs updates
+without your confirmation.
 
-- Add one or more HTTP, HTTPS, magnet, or `.torrent` links, including links
-  copied to the clipboard.
-- Scan a page for direct video, audio, and streaming links. Filter results by
-  file type or host, search them, then queue, open, or copy selected links.
-- Download files over HTTP, resuming partial downloads when the server supports
-  it, use yt-dlp for supported video and audio sites, or download torrents
-  through libtorrent.
-- Pause, resume, cancel, retry, and manage several downloads at once.
-- Choose a download folder and save download history and preferences locally.
-- See a Windows notification when a download finishes.
-- Use the interface in any of 20 languages.
+## Features
 
-Page scanning checks media tags, lazy-loaded sources, player URLs in page
-scripts, and embedded player frames (up to two levels deep). It also uses
-yt-dlp to recognize supported video pages even when playback has not started.
-If Chrome or Edge is installed, it also opens pages headlessly and checks
-JavaScript-generated markup and media-stream requests, without clicking Play.
-The browser scan uses a temporary profile and does not reuse browser sessions.
-Media loaded only after user interaction may still not be found. Site support
-depends on the site and the media format.
+- **Downloads:** HTTP/HTTPS with resume support, plus video and audio from
+  sites supported by yt-dlp.
+- **Find Links:** scan a web page, filter discovered media, and queue, open, or
+  copy results.
+- **BitTorrent:** magnet links, `.torrent` URLs, and local torrent files, with
+  per-file selection and optional VPN interface binding.
+- **Manage:** pause, resume, stop, retry, inspect progress, and remove
+  downloads—including partial torrent data.
+- **Keep track:** download history, Windows completion notifications, and
+  interface translations in **20 languages**.
+
+**Examples:** `https://example.com/file.zip` · `magnet:?xt=urn:btih:...` ·
+`https://example.com/file.torrent`
+
+## Find Links
+
+1. Open **Find Links** and paste a page URL.
+2. Start the scan; filter results by **type** or **host**, or search by name.
+3. Select a result to **download**, **open**, or **copy** its URL.
+
+The scanner looks in media tags, lazy-loaded sources, page scripts, and embedded
+players. It can also recognize yt-dlp-supported pages and, with Chrome or Edge
+installed, inspect JavaScript-generated pages in a headless browser.
+
+**Example:** Paste a page URL—not only a direct `.mp4` URL—to find media links
+embedded in that page.
+
+*Some sites load media only after interaction or restrict automated requests,
+so not every link can be discovered.*
 
 ## Screenshots
 
@@ -62,64 +83,56 @@ depends on the site and the media format.
 
 <p><img src="https://i.imgur.com/goKqxpq.png" alt="Downetic showing a completed download" width="900"></p>
 
-## YouTube and other video sites
+## Video and audio sites
 
-Video downloads use yt-dlp, which includes extractors for TikTok video pages and
-TikTok share links (`vm.tiktok.com`, `vt.tiktok.com`, and `tiktok.com/t/...`).
-Paste a link to one video; profile, tag, music, and collection pages are not
-downloaded automatically. TikTok may change its service, so availability can
-vary over time. If TikTok rejects an anonymous request, choose Chrome or Edge
-under **Settings > Browser cookies** and retry. This opt-in setting applies to
-all yt-dlp video-site downloads, not only TikTok. yt-dlp reads cookies from
-the selected browser locally; turn the setting off from the same menu whenever
-you like. On Windows, if Chrome locks its cookie database, Downetic retries
-using a temporary SQLite snapshot and removes that snapshot when the operation
-ends. Cookies are not used for ordinary HTTP file downloads.
+Video and audio downloads use **yt-dlp**. Paste a link to one video; playlists,
+profiles, and collection pages are not downloaded automatically.
 
-YouTube may also need a JavaScript runtime:
-[Node.js](https://nodejs.org/) LTS is recommended; Deno and Bun are also
-supported when available on `PATH`.
+- YouTube may require **Node.js LTS**, Deno, or Bun on `PATH`.
+- If a site requires a signed-in session, choose **Settings → Browser cookies**
+  and select Chrome or Edge. Cookies are used locally for yt-dlp downloads,
+  **not** for ordinary file downloads.
+- To save captions, turn on **Settings → Download subtitles**.
 
-Enable **Settings > Download subtitles** to save available manually supplied
-and automatic subtitles alongside video downloads. The default is off.
-
-If a video download fails, Downetic gives a suggested next step for common
-problems such as an unsupported URL, unavailable format, HTTP 403/429, or a
-site response yt-dlp cannot parse. The original extractor details remain
-included to help diagnose site-side changes.
+TikTok and other sites can change how links work; support depends on yt-dlp and
+the site. If a download fails, Downetic shows troubleshooting suggestions and
+the original error details.
 
 ## Torrent downloads
 
-Downetic recognizes magnet links and `.torrent` URLs automatically. You can also
-open the **Torrent** tab to paste magnet links, paste `.torrent` URLs, or choose
-local `.torrent` files. Torrent downloads use libtorrent, save each torrent into
-its own folder inside the selected download directory, and support pause, resume,
-cancel, progress, speed, and ETA updates. Open **Torrent information** from a
-torrent's context menu to select which files to download; the selection is saved
-and applied while the torrent is active. The **Host** column shows one tracker
-and the count of additional trackers.
+Powered by [libtorrent](https://www.libtorrent.org/). Paste a magnet link, a
+`.torrent` URL, or choose a local `.torrent` file from the **Torrent** tab.
+Each torrent saves into its own folder in your selected download directory.
+
+**Choose files:** right-click a torrent → **Torrent information** → check the
+files you want. Your selection is saved.
+
+**See what's happening:** progress, speed, ETA, seeds, peers, and tracker host.
+The **Host** column shows a tracker and how many more are available.
+
+**Remove partial data:** stop or cancel a torrent, then choose **Delete
+downloaded file** to remove its data, including incomplete files.
+
+**Use with a VPN:** select a network interface and enable binding in the
+**Torrent** tab *before* starting a torrent. This binds libtorrent traffic to
+the selected interface; it does not connect to a VPN. Connect your VPN
+separately and verify that the selected interface belongs to it.
 
 ## Run from source
 
-1. Install 64-bit Python 3.12 or newer from
-   [python.org](https://www.python.org/downloads/windows/). Make sure Tcl/Tk is
-   included.
-2. Open PowerShell in the project folder and install the dependencies:
+Requires **64-bit Python 3.12+** with Tcl/Tk. In PowerShell:
 
-   ```powershell
-   py -3.12 -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   python -m pip install --upgrade pip
-   python -m pip install -r requirements.txt
-   ```
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python main.py
+```
 
-3. Start Downetic:
+## Build for Windows
 
-   ```powershell
-   python main.py
-   ```
-
-## Build a Windows executable
+### Standalone executable
 
 With the virtual environment activated, run:
 
@@ -131,39 +144,24 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --name Downetic `
   --collect-all yt_dlp --collect-all yt_dlp_ejs --collect-all libtorrent main.py
 ```
 
-The app is created at `dist\Downetic.exe`. Its first launch may take longer.
+Creates `dist\Downetic.exe`. The command bundles **libtorrent** for torrent
+downloads; the first launch may take longer.
 
-## Build the Windows installer
+### Installer
 
-The installer interface is available in English, Italian, French, German,
-Spanish, Brazilian Portuguese, and Japanese. It asks you to accept an
-installation and use notice before continuing. It detects Node.js and FFmpeg
-on `PATH` and lets you choose separately whether to reuse each existing
-installation or download Downetic's bundled copy. The installer places
-Downetic and the selected runtimes in the chosen app folder.
-It downloads the Node.js LTS archive from nodejs.org and an LGPL shared FFmpeg
-build from BtbN/FFmpeg-Builds during setup, so an Internet connection is
-required. The archives are SHA-256 verified. The installed runtimes are local
-to Downetic and do not change the system `PATH`. When you choose existing
-components, Downetic uses them from the system `PATH` without changing it. The
-portable executable and source builds use runtimes already installed on the
-computer.
-
-Build the executable first, install Inno Setup 6, then run the compiler from
-the project folder:
+First build the executable above and install **Inno Setup 6**. Then run:
 
 ```powershell
 Set-Location .\installer
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" .\Downetic.iss
 ```
 
-The installer is written to `dist\installer`. The installer supports Windows
-10 version 22H2 and newer. The installed FFmpeg package contains its license;
-Node.js includes its license and third-party notices. YouTube downloads still
-depend on the supported site and may change over time.
+The installer is created in `dist\installer` and supports **Windows 10 22H2+**.
+It includes Downetic and libtorrent. During setup, it downloads SHA-256-verified
+Node.js and FFmpeg archives, unless you choose to reuse those tools from `PATH`.
+Setup requires an Internet connection for any runtimes it needs to download.
 
-Before building or publishing a release, verify its version and installer
-languages and licenses with the JavaScript release checker:
+Before publishing, synchronize the installer version and verify the release:
 
 ```powershell
 node .\tests\js\sync-release-version.mjs
@@ -172,21 +170,22 @@ node .\tests\js\verify-release.mjs
 
 ## Files and privacy
 
-Downloads are saved in the folder you choose. Settings and download history
-are stored locally under `%LOCALAPPDATA%\Downetic`. Installing a newer release
-over an existing installation reuses its install folder and preserves these
-settings and download history.
+- **Downloads:** saved in the folder you choose.
+- **Settings and history:** stored locally in `%LOCALAPPDATA%\Downetic`.
+- **Upgrades:** keep the existing settings and history.
+- **Browser cookies:** only read locally when you enable them for yt-dlp;
+  ordinary HTTP downloads do not use them.
 
 ## Tests
 
-Run the test suite from the project folder:
+Run the tests from the project folder:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-The HTTP download tests use a local temporary server; they do not contact an
-external download service.
+HTTP tests use a local temporary server; they don't contact an external
+download service.
 
 ## Credits
 
